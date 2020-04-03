@@ -106,10 +106,6 @@ class AuthD::Service
 
 			Response::UserAdded.new user.to_public
 		when Request::ValidateUser
-			if request.shared_key != @jwt_key
-				return Response::Error.new "invalid authentication key"
-			end
-
 			user = @users_per_login.get? request.login
 
 			if user.nil?
@@ -124,7 +120,7 @@ class AuthD::Service
 			if user.contact.activation_key == request.activation_key
 				user.contact.activation_key = nil
 			else
-				return Response::Error.new "Wrong activation key"
+				return Response::Error.new "wrong activation key"
 			end
 
 			@users_per_uid.update user.uid.to_s, user
@@ -392,7 +388,6 @@ class AuthD::Service
 
 			users = @users.to_a
 			users.each do |u|
-				# pp! u
 				if pattern =~ u.login
 					puts "#{u.login} matches #{pattern}"
 					matching_users << u.to_public

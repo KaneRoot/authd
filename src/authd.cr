@@ -223,14 +223,10 @@ class AuthD::Request
 	end
 
 	class ValidateUser < Request
-		# Only clients that have the right shared key will be allowed
-		# to validate users.
-		property shared_key        : String
-
 		property login             : String
 		property activation_key    : String
 
-		initialize :shared_key, :login, :activation_key
+		initialize :login, :activation_key
 	end
 
 	class GetUser < Request
@@ -452,10 +448,7 @@ module AuthD
 		end
 
 		def validate_user(login : String, activation_key : String) : ::AuthD::User::Public | Exception
-
-			pp! login
-			pp! activation_key
-			send Request::ValidateUser.new @key, login, activation_key
+			send Request::ValidateUser.new login, activation_key
 
 			response = Response.from_ipc read
 
