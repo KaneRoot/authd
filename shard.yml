@@ -32,16 +32,16 @@ dependencies:
     grok:
         github: spinscale/grok.cr
     passwd:
-        git: https://git.karchnu.fr/WeirdOS/passwd.cr
+        git: https://git.baguette.netlib.re/Baguette/passwd.cr
         branch: master
     ipc:
-        git: https://git.karchnu.fr/WeirdOS/ipc.cr
+        git: https://git.baguette.netlib.re/Baguette/ipc.cr
         branch: master
     jwt:
         github: crystal-community/jwt
         branch: master
     dodb:
-        git: https://git.karchnu.fr/WeirdOS/dodb.cr
+        git: https://git.baguette.netlib.re/Baguette/dodb.cr
         branch: master
 
 license: EUPL
