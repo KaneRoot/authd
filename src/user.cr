@@ -63,12 +63,14 @@ class AuthD::User
 		property uid     : Int32
 		property profile : JSON::Any?
 
-		def initialize(@uid, @login, @profile)
+		property date_registration : Time?
+
+		def initialize(@uid, @login, @profile, @date_registration)
 		end
 	end
 
 	def to_public : Public
-		Public.new @uid, @login, @profile
+		Public.new @uid, @login, @profile, @date_registration
 	end
 end
 
