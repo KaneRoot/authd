@@ -397,13 +397,23 @@ class AuthD::Service
 			end
 
 			Response::MatchingUsers.new matching_users
+		when Request::EditProfile
+			user = get_user_from_token request.token
+
+			return Response::Error.new "invalid user" unless user
+
+			user.profile = request.new_profile
+
+			@users_per_uid.update user.uid.to_s, user
+
+			Response::User.new user.to_public
 		else
 			Response::Error.new "unhandled request type"
 		end
 	end
 
 	def get_user_from_token(token : String)
-		token_payload = Token.from_s(token, @jwt_key)
+		token_payload = Token.from_s(@jwt_key, token)
 
 		@users_per_uid.get? token_payload.uid.to_s
 	end

@@ -319,6 +319,13 @@ class AuthD::Request
 		initialize :user
 	end
 
+	class EditProfile < Request
+		property token : String
+		property new_profile : JSON::Any
+
+		initialize :token, :new_profile
+	end
+
 	# This creates a Request::Type enumeration. One entry for each request type.
 	{% begin %}
 		enum Type
