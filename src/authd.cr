@@ -55,9 +55,10 @@ class AuthD::Response
 	end
 
 	class Token < Response
+		property uid    : Int32
 		property token  : String
 
-		initialize :token
+		initialize :token, :uid
 	end
 
 	class User < Response

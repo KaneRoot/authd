@@ -71,7 +71,7 @@ class AuthD::Service
 			# change the date of the last connection
 			@users_per_uid.update user.uid.to_s, user
 
-			Response::Token.new token.to_s @jwt_key
+			Response::Token.new (token.to_s @jwt_key), user.uid
 		when Request::AddUser
 			# No verification of the users' informations when an admin adds it.
 			# No mail address verification.
