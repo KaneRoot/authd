@@ -16,6 +16,9 @@ extend AuthD
 class AuthD::Service
 	property registrations_allowed = false
 	property require_email         = false
+	property mailer_activation_url : String? = nil
+	property mailer_field_from     : String? = nil
+	property mailer_field_subject  : String? = nil
 
 	@users_per_login : DODB::Index(User)
 	@users_per_uid   : DODB::Index(User)
@@ -228,15 +231,23 @@ class AuthD::Service
 
 			user.date_registration = Time.local
 
-			# Once the user is created and stored, we try to contact him
-			unless Process.run("activation-mailer", [
-				"-l", user.login,
-				"-e", user.contact.email.not_nil!,
-				"-t", "Activation email",
-				"-f", "karchnu@localhost",
-				"-a", user.contact.activation_key.not_nil!
-				]).success?
-				return Response::Error.new "cannot contact the user (but still registered)"
+			unless (mailer_activation_url = @mailer_activation_url).nil?
+
+				mailer_field_subject  = @mailer_field_subject.not_nil!
+				mailer_field_from     = @mailer_field_from.not_nil!
+				mailer_activation_url = @mailer_activation_url.not_nil!
+
+				# Once the user is created and stored, we try to contact him
+				unless Process.run("activation-mailer", [
+					"-l", user.login,
+					"-e", user.contact.email.not_nil!,
+					"-t", mailer_field_subject,
+					"-f", mailer_field_from,
+					"-u", mailer_activation_url,
+					"-a", user.contact.activation_key.not_nil!
+					]).success?
+					return Response::Error.new "cannot contact the user (but still registered)"
+				end
 			end
 
 			# add the user only if we were able to send the confirmation mail
@@ -346,15 +357,22 @@ class AuthD::Service
 
 			@users_per_uid.update user.uid.to_s, user
 
-			# Once the user is created and stored, we try to contact him
-			unless Process.run("password-recovery-mailer", [
-				"-l", user.login,
-				"-e", user.contact.email.not_nil!,
-				"-t", "Password recovery email",
-				"-f", "karchnu@localhost",
-				"-a", user.password_renew_key.not_nil!
-				]).success?
-				return Response::Error.new "cannot contact the user for password recovery"
+			unless (mailer_activation_url = @mailer_activation_url).nil?
+
+				mailer_field_from     = @mailer_field_from.not_nil!
+				mailer_activation_url = @mailer_activation_url.not_nil!
+
+				# Once the user is created and stored, we try to contact him
+				unless Process.run("password-recovery-mailer", [
+					"-l", user.login,
+					"-e", user.contact.email.not_nil!,
+					"-t", "Password recovery email",
+					"-f", mailer_field_from,
+					"-u", mailer_activation_url,
+					"-a", user.password_renew_key.not_nil!
+					]).success?
+					return Response::Error.new "cannot contact the user for password recovery"
+				end
 			end
 
 			Response::PasswordRecoverySent.new user.to_public
@@ -461,6 +479,9 @@ authd_storage = "storage"
 authd_jwt_key = "nico-nico-nii"
 authd_registrations = false
 authd_require_email = false
+activation_url : String? = nil
+field_subject  : String? = nil
+field_from     : String? = nil
 
 begin
 	OptionParser.parse do |parser|
@@ -482,6 +503,18 @@ begin
 			authd_require_email = true
 		end
 
+		parser.on "-t subject", "--subject title", "Subject of the email." do |s|
+			field_subject = s
+		end
+
+		parser.on "-f from-email", "--from email", "'From:' field to use in activation email." do |f|
+			field_from = f
+		end
+
+		parser.on "-u", "--activation-url url", "Activation URL." do |opt|
+			activation_url = opt
+		end
+
 		parser.on "-h", "--help", "Show this help" do
 			puts parser
 
@@ -492,6 +525,9 @@ begin
 	AuthD::Service.new(authd_storage, authd_jwt_key).tap do |authd|
 		authd.registrations_allowed = authd_registrations
 		authd.require_email         = authd_require_email
+		authd.mailer_activation_url = activation_url
+		authd.mailer_field_subject  = field_subject
+		authd.mailer_field_from     = field_from
 	end.run
 rescue e : OptionParser::Exception
 	STDERR.puts e.message
