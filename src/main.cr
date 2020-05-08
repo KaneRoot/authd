@@ -74,7 +74,7 @@ class AuthD::Service
 			# change the date of the last connection
 			@users_per_uid.update user.uid.to_s, user
 
-			Response::Token.new token.to_s @jwt_key
+			Response::Token.new (token.to_s @jwt_key), user.uid
 		when Request::AddUser
 			# No verification of the users' informations when an admin adds it.
 			# No mail address verification.
@@ -109,10 +109,6 @@ class AuthD::Service
 
 			Response::UserAdded.new user.to_public
 		when Request::ValidateUser
-			if request.shared_key != @jwt_key
-				return Response::Error.new "invalid authentication key"
-			end
-
 			user = @users_per_login.get? request.login
 
 			if user.nil?
@@ -127,7 +123,7 @@ class AuthD::Service
 			if user.contact.activation_key == request.activation_key
 				user.contact.activation_key = nil
 			else
-				return Response::Error.new "Wrong activation key"
+				return Response::Error.new "wrong activation key"
 			end
 
 			@users_per_uid.update user.uid.to_s, user
@@ -410,7 +406,6 @@ class AuthD::Service
 
 			users = @users.to_a
 			users.each do |u|
-				# pp! u
 				if pattern =~ u.login
 					puts "#{u.login} matches #{pattern}"
 					matching_users << u.to_public
@@ -420,13 +415,23 @@ class AuthD::Service
 			end
 
 			Response::MatchingUsers.new matching_users
+		when Request::EditProfile
+			user = get_user_from_token request.token
+
+			return Response::Error.new "invalid user" unless user
+
+			user.profile = request.new_profile
+
+			@users_per_uid.update user.uid.to_s, user
+
+			Response::User.new user.to_public
 		else
 			Response::Error.new "unhandled request type"
 		end
 	end
 
 	def get_user_from_token(token : String)
-		token_payload = Token.from_s(token, @jwt_key)
+		token_payload = Token.from_s(@jwt_key, token)
 
 		@users_per_uid.get? token_payload.uid.to_s
 	end

@@ -55,9 +55,10 @@ class AuthD::Response
 	end
 
 	class Token < Response
+		property uid    : Int32
 		property token  : String
 
-		initialize :token
+		initialize :token, :uid
 	end
 
 	class User < Response
@@ -223,14 +224,10 @@ class AuthD::Request
 	end
 
 	class ValidateUser < Request
-		# Only clients that have the right shared key will be allowed
-		# to validate users.
-		property shared_key        : String
-
 		property login             : String
 		property activation_key    : String
 
-		initialize :shared_key, :login, :activation_key
+		initialize :login, :activation_key
 	end
 
 	class GetUser < Request
@@ -321,6 +318,13 @@ class AuthD::Request
 		property user : String
 
 		initialize :user
+	end
+
+	class EditProfile < Request
+		property token : String
+		property new_profile : JSON::Any
+
+		initialize :token, :new_profile
 	end
 
 	# This creates a Request::Type enumeration. One entry for each request type.
@@ -452,10 +456,7 @@ module AuthD
 		end
 
 		def validate_user(login : String, activation_key : String) : ::AuthD::User::Public | Exception
-
-			pp! login
-			pp! activation_key
-			send Request::ValidateUser.new @key, login, activation_key
+			send Request::ValidateUser.new login, activation_key
 
 			response = Response.from_ipc read
 
