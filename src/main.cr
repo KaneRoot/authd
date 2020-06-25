@@ -406,7 +406,14 @@ class AuthD::Service
 
 			users = @users.to_a
 			users.each do |u|
-				if pattern =~ u.login
+				if pattern =~ u.login || u.profile.try do |profile|
+						full_name = profile["full_name"]?
+						if full_name.nil?
+							false
+						else
+							pattern =~ full_name.as_s
+						end
+					end
 					puts "#{u.login} matches #{pattern}"
 					matching_users << u.to_public
 				else
