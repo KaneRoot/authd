@@ -51,7 +51,7 @@ class AuthD::Service
 		uid
 	end
 
-	def handle_request(request : AuthD::Request?, connection : IPC::Connection)
+	def handle_request(request : AuthD::Request?)
 		case request
 		when Request::GetToken
 			begin
@@ -454,7 +454,8 @@ class AuthD::Service
 	def run
 		##
 		# Provides a JWT-based authentication scheme for service-specific users.
-		IPC::Service.new "auth" do |event|
+		server = IPC::Server.new "auth"
+		server.loop do |event|
 			if event.is_a? IPC::Exception
 				puts "oh no"
 				pp! event
@@ -462,15 +463,15 @@ class AuthD::Service
 			end
 
 			case event
-			when IPC::Event::Message
+			when IPC::Event::MessageReceived
 				begin
 					request = Request.from_ipc event.message
 
 					info "<< #{request.class.name.sub /^Request::/, ""}"
 
-					response = handle_request request, event.connection
+					response = handle_request request
 
-					event.connection.send response
+					server.send event.fd, response
 				rescue e : MalformedRequest
 					error "#{e.message}"
 					error " .. type was:    #{e.ipc_type}"

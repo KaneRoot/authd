@@ -169,9 +169,9 @@ class AuthD::Response
 	end
 end
 
-class IPC::Connection
-	def send(response : AuthD::Response)
-		send response.type.to_u8, response.to_json
+class IPC::Context
+	def send(fd, response : AuthD::Response)
+		send fd, response.type.to_u8, response.to_json
 	end
 end
 
@@ -369,14 +369,14 @@ class AuthD::Request
 	end
 end
 
-class IPC::Connection
-	def send(request : AuthD::Request)
-		send request.type.to_u8, request.to_json
+class IPC::Context
+	def send(fd, request : AuthD::Request)
+		send fd, request.type.to_u8, request.to_json
 	end
 end
 
 module AuthD
-	class Client < IPC::Connection
+	class Client < IPC::Client
 		property key : String
 
 		def initialize
