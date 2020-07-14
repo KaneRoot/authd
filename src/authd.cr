@@ -169,12 +169,6 @@ class AuthD::Response
 	end
 end
 
-class IPC::Context
-	def send(fd, response : AuthD::Response)
-		send fd, response.type.to_u8, response.to_json
-	end
-end
-
 class AuthD::Request
 	include JSON::Serializable
 
@@ -369,12 +363,6 @@ class AuthD::Request
 	end
 end
 
-class IPC::Context
-	def send(fd, request : AuthD::Request)
-		send fd, request.type.to_u8, request.to_json
-	end
-end
-
 module AuthD
 	class Client < IPC::Client
 		property key : String
@@ -422,7 +410,7 @@ module AuthD
 		end
 
 		def send(type : Request::Type, payload)
-			send type.value.to_u8, payload
+			send @server_fd, type.value.to_u8, payload
 		end
 
 		def decode_token(token)
@@ -582,6 +570,22 @@ module AuthD
 			else
 				Exception.new
 			end
+		end
+	end
+end
+
+class IPC::Context
+	def send(fd, response : AuthD::Response)
+		send fd, response.type.to_u8, response.to_json
+	end
+end
+
+class IPC::Client
+	def send(request : AuthD::Request)
+		unless (fd = @server_fd).nil?
+			send fd, request.type.to_u8, request.to_json
+		else
+			raise "Client not connected to the server"
 		end
 	end
 end
