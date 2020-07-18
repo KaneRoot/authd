@@ -455,6 +455,8 @@ class AuthD::Service
 		##
 		# Provides a JWT-based authentication scheme for service-specific users.
 		server = IPC::Server.new "auth"
+		server.base_timer = 30000 # 30 seconds
+		server.timer      = 30000 # 30 seconds
 		server.loop do |event|
 			if event.is_a? IPC::Exception
 				puts "oh no"
@@ -463,6 +465,8 @@ class AuthD::Service
 			end
 
 			case event
+			when IPC::Event::Timer
+				info "Timer"
 			when IPC::Event::MessageReceived
 				begin
 					request = Request.from_ipc event.message
