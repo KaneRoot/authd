@@ -28,8 +28,6 @@ OptionParser.parse do |parser|
 end
 
 begin
-	authd = IPC::Connection.new "auth"
-
 	authd = AuthD::Client.new
 	# authd.key = File.read(key_file.not_nil!).chomp
 

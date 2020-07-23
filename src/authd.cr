@@ -410,7 +410,7 @@ module AuthD
 		end
 
 		def send(type : Request::Type, payload)
-			send @server_fd, type.value.to_u8, payload
+			send_now @server_fd, type.value.to_u8, payload
 		end
 
 		def decode_token(token)
@@ -583,7 +583,7 @@ end
 class IPC::Client
 	def send(request : AuthD::Request)
 		unless (fd = @server_fd).nil?
-			send fd, request.type.to_u8, request.to_json
+			send_now fd, request.type.to_u8, request.to_json
 		else
 			raise "Client not connected to the server"
 		end
