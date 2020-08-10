@@ -212,7 +212,7 @@ class AuthD::Request
 		property password   : String
 		property email      : String?
 		property phone      : String?
-		property profile    : JSON::Any?
+		property profile    : Hash(String, JSON::Any)?
 
 		initialize :shared_key, :login, :password, :email, :phone, :profile
 	end
@@ -254,7 +254,7 @@ class AuthD::Request
 		property password   : String
 		property email      : String?
 		property phone      : String?
-		property profile    : JSON::Any?
+		property profile    : Hash(String, JSON::Any)?
 
 		initialize :login, :password, :email, :phone, :profile
 	end
@@ -316,8 +316,22 @@ class AuthD::Request
 
 	class EditProfile < Request
 		property token : String
-		property new_profile : JSON::Any
+		property new_profile : Hash(String, JSON::Any)
 
+		initialize :token, :new_profile
+	end
+
+	# Same as above, but doesn’t reset the whole profile, only resets elements
+	# for which keys are present in `new_profile`.
+	class EditProfileContent < Request
+		property token      : String?
+
+		property shared_key : String?
+		property user : Int32 | String | Nil
+
+		property new_profile : Hash(String, JSON::Any)
+
+		initialize :shared_key, :user, :new_profile
 		initialize :token, :new_profile
 	end
 
@@ -569,6 +583,20 @@ module AuthD
 				raise Exception.new response.reason
 			else
 				Exception.new
+			end
+		end
+
+		def edit_profile_content(user : Int32 | String, new_values)
+			send Request::EditProfileContent.new key, user, new_values
+			response = Response.from_ipc read
+
+			case response
+			when Response::User
+				response.user
+			when Response::Error
+				raise Exception.new response.reason
+			else
+				raise Exception.new "unexpected response"
 			end
 		end
 	end

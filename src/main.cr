@@ -19,6 +19,7 @@ class AuthD::Service
 	property mailer_activation_url : String? = nil
 	property mailer_field_from     : String? = nil
 	property mailer_field_subject  : String? = nil
+	property read_only_profile_keys = Array(String).new
 
 	@users_per_login : DODB::Index(User)
 	@users_per_uid   : DODB::Index(User)
@@ -427,7 +428,61 @@ class AuthD::Service
 
 			return Response::Error.new "invalid user" unless user
 
-			user.profile = request.new_profile
+			new_profile = request.new_profile
+
+			@read_only_profile_keys.each do |key|
+				if new_profile.has_key? key
+					return Response::Error.new "tried to edit read only key"
+				end
+			end
+
+			user.profile = new_profile
+
+			@users_per_uid.update user.uid.to_s, user
+
+			Response::User.new user.to_public
+		when Request::EditProfileContent
+			user = if token = request.token
+				user = get_user_from_token token
+
+				return Response::Error.new "invalid user" unless user
+
+				user
+			elsif shared_key = request.shared_key
+				return Response::Error.new "invalid shared key" if shared_key != @jwt_key
+
+				user = request.user
+
+				return Response::Error.new "invalid user" unless user
+
+				user = if user.is_a? Int32
+					@users_per_uid.get? user.to_s
+				else
+					@users_per_login.get? user
+				end
+
+				return Response::Error.new "invalid user" unless user
+
+				user
+			else
+				return Response::Error.new "no token or shared_key/user pair"
+			end
+
+			new_profile = user.profile || Hash(String, JSON::Any).new
+
+			unless request.shared_key
+				@read_only_profile_keys.each do |key|
+					if request.new_profile.has_key? key
+						return Response::Error.new "tried to edit read only key"
+					end
+				end
+			end
+
+			request.new_profile.each do |key, value|
+				new_profile[key] = value
+			end
+
+			user.profile = new_profile
 
 			@users_per_uid.update user.uid.to_s, user
 
@@ -499,6 +554,7 @@ authd_require_email = false
 activation_url : String? = nil
 field_subject  : String? = nil
 field_from     : String? = nil
+read_only_profile_keys = Array(String).new
 
 begin
 	OptionParser.parse do |parser|
@@ -532,6 +588,10 @@ begin
 			activation_url = opt
 		end
 
+		parser.on "-x key", "--read-only-profile-key key", "Marks a user profile key as being read-only." do |key|
+			read_only_profile_keys.push key
+		end
+
 		parser.on "-h", "--help", "Show this help" do
 			puts parser
 
@@ -545,6 +605,7 @@ begin
 		authd.mailer_activation_url = activation_url
 		authd.mailer_field_subject  = field_subject
 		authd.mailer_field_from     = field_from
+		authd.read_only_profile_keys = read_only_profile_keys
 	end.run
 rescue e : OptionParser::Exception
 	STDERR.puts e.message

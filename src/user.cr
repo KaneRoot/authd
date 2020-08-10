@@ -34,7 +34,7 @@ class AuthD::User
 	# Public.
 	property login         : String
 	property uid           : Int32
-	property profile       : JSON::Any?
+	property profile       : Hash(String, JSON::Any)?
 
 	# Private.
 	property contact              : Contact
@@ -61,7 +61,7 @@ class AuthD::User
 
 		property login   : String
 		property uid     : Int32
-		property profile : JSON::Any?
+		property profile : Hash(String, JSON::Any)?
 
 		property date_registration : Time?
 
