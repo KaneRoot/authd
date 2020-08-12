@@ -347,7 +347,12 @@ class AuthD::Service
 			end
 
 			if user.nil?
-				return Response::Error.new "user not found"
+				return Response::Error.new "no such user"
+			end
+
+			if user.contact.email != request.email
+				# Same error as when users are not found.
+				return Response::Error.new "no such user"
 			end
 
 			user.password_renew_key = UUID.random.to_s
@@ -374,10 +379,6 @@ class AuthD::Service
 
 			Response::PasswordRecoverySent.new user.to_public
 		when Request::PasswordRecovery
-			if request.shared_key != @jwt_key
-				return Response::Error.new "invalid authentication key"
-			end
-
 			uid_or_login = request.user
 			user = if uid_or_login.is_a? Int32
 				@users_per_uid.get? uid_or_login.to_s
@@ -524,11 +525,13 @@ class AuthD::Service
 				info "Timer"
 			when IPC::Event::MessageReceived
 				begin
-					request = Request.from_ipc event.message
+					request = Request.from_ipc(event.message).not_nil!
 
 					info "<< #{request.class.name.sub /^Request::/, ""}"
 
 					response = handle_request request
+
+					response.id = request.id
 
 					server.send event.fd, response
 				rescue e : MalformedRequest

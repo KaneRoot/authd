@@ -21,6 +21,8 @@ end
 class AuthD::Response
 	include JSON::Serializable
 
+	property id : JSON::Any?
+
 	annotation MessageType
 	end
 
@@ -172,6 +174,8 @@ end
 class AuthD::Request
 	include JSON::Serializable
 
+	property id : JSON::Any?
+
 	annotation MessageType
 	end
 
@@ -249,7 +253,7 @@ class AuthD::Request
 		initialize :shared_key, :user
 	end
 
-	class Request::Register < Request
+	class Register < Request
 		property login      : String
 		property password   : String
 		property email      : String?
@@ -259,13 +263,13 @@ class AuthD::Request
 		initialize :login, :password, :email, :phone, :profile
 	end
 
-	class Request::UpdatePassword < Request
+	class UpdatePassword < Request
 		property login      : String
 		property old_password : String
 		property new_password : String
 	end
 
-	class Request::ListUsers < Request
+	class ListUsers < Request
 		property token : String?
 		property key : String?
 	end
@@ -294,18 +298,18 @@ class AuthD::Request
 	end
 
 	class PasswordRecovery < Request
-		property shared_key         : String
 		property user               : Int32 | String
 		property password_renew_key : String
 		property new_password       : String
 
-		initialize :shared_key, :user, :password_renew_key, :new_password
+		initialize :user, :password_renew_key, :new_password
 	end
 
 	class AskPasswordRecovery < Request
 		property user       : Int32 | String
+		property email      : String
 
-		initialize :user
+		initialize :user, :email
 	end
 
 	class SearchUser < Request
@@ -488,7 +492,7 @@ module AuthD
 		end
 
 		def change_password(uid_or_login : String | Int32, new_pass : String, renew_key : String)
-			send Request::PasswordRecovery.new @key, uid_or_login, renew_key, new_pass
+			send Request::PasswordRecovery.new uid_or_login, renew_key, new_pass
 			response = Response.from_ipc read
 
 			case response
