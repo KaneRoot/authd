@@ -400,7 +400,7 @@ class AuthD::Service
 
 			@users_per_uid.update user.uid.to_s, user
 
-			Response::PasswordRecoverySent.new user.to_public
+			Response::PasswordRecovered.new user.to_public
 		when Request::SearchUser
 			pattern = Regex.new request.user
 
