@@ -11,6 +11,26 @@ require "grok"
 
 require "./authd.cr"
 
+class Context
+	class_property verbosity = 1
+end
+
+class Log
+	def self.debug(message)
+		STDOUT << ":: ".colorize(:green) << message.colorize(:white) << "\n" if ::Context.verbosity > 2
+	end
+	def self.info(message)
+		STDOUT << ":: ".colorize(:blue) << message.colorize(:white) << "\n" if ::Context.verbosity > 1
+	end
+	def self.warning(message)
+		STDERR << "?? ".colorize(:yellow) << message.colorize(:yellow) << "\n" if ::Context.verbosity > 0
+	end
+	def self.error(message)
+		STDERR << "!! ".colorize(:red) << message.colorize(:red) << "\n" if ::Context.verbosity > 0
+	end
+end
+
+
 extend AuthD
 
 class AuthD::Service
@@ -416,10 +436,10 @@ class AuthD::Service
 							pattern =~ full_name.as_s
 						end
 					end
-					puts "#{u.login} matches #{pattern}"
+					Log.debug "#{u.login} matches #{pattern}"
 					matching_users << u.to_public
 				else
-					puts "#{u.login} doesn't match #{pattern}"
+					Log.error "#{u.login} doesn't match #{pattern}"
 				end
 			end
 
@@ -499,14 +519,6 @@ class AuthD::Service
 		@users_per_uid.get? token_payload.uid.to_s
 	end
 
-	def info(message)
-		STDOUT << ":: ".colorize(:green) << message.colorize(:white) << "\n"
-	end
-
-	def error(message)
-		STDOUT << "!! ".colorize(:red) << message.colorize(:red) << "\n"
-	end
-
 	def run
 		##
 		# Provides a JWT-based authentication scheme for service-specific users.
@@ -515,19 +527,19 @@ class AuthD::Service
 		server.timer      = 30000 # 30 seconds
 		server.loop do |event|
 			if event.is_a? IPC::Exception
-				puts "oh no"
+				Log.error "IPC::Exception"
 				pp! event
 				next
 			end
 
 			case event
 			when IPC::Event::Timer
-				info "Timer"
+				Log.debug "Timer"
 			when IPC::Event::MessageReceived
 				begin
 					request = Request.from_ipc(event.message).not_nil!
 
-					info "<< #{request.class.name.sub /^Request::/, ""}"
+					Log.info "<< #{request.class.name.sub /^Request::/, ""}"
 
 					response = handle_request request
 
@@ -535,16 +547,16 @@ class AuthD::Service
 
 					server.send event.fd, response
 				rescue e : MalformedRequest
-					error "#{e.message}"
-					error " .. type was:    #{e.ipc_type}"
-					error " .. payload was: #{e.payload}"
+					Log.error "#{e.message}"
+					Log.error " .. type was:    #{e.ipc_type}"
+					Log.error " .. payload was: #{e.payload}"
 					response =  Response::Error.new e.message
 				rescue e
-					error "#{e.message}"
+					Log.error "#{e.message}"
 					response = Response::Error.new e.message
 				end
 
-				info ">> #{response.class.name.sub /^Response::/, ""}"
+				Log.info ">> #{response.class.name.sub /^Response::/, ""}"
 			end
 		end
 	end
@@ -595,6 +607,13 @@ begin
 			read_only_profile_keys.push key
 		end
 
+		parser.on "-v verbosity",
+			"--verbosity level",
+			"Verbosity level. From 0 to 3. Default: 1" do |v|
+			Context.verbosity = v.to_i
+		end
+
+
 		parser.on "-h", "--help", "Show this help" do
 			puts parser
 
@@ -611,9 +630,9 @@ begin
 		authd.read_only_profile_keys = read_only_profile_keys
 	end.run
 rescue e : OptionParser::Exception
-	STDERR.puts e.message
+	Log.error e.message
 rescue e
-	STDERR.puts "exception raised: #{e.message}"
+	Log.error "exception raised: #{e.message}"
 	e.backtrace.try &.each do |line|
 		STDERR << "  - " << line << '\n'
 	end
