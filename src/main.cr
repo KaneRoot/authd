@@ -7,29 +7,10 @@ require "jwt"
 require "ipc"
 require "dodb"
 
+require "baguette-crystal-base"
 require "grok"
 
 require "./authd.cr"
-
-class Context
-	class_property verbosity = 1
-end
-
-class Log
-	def self.debug(message)
-		STDOUT << ":: ".colorize(:green) << message.colorize(:white) << "\n" if ::Context.verbosity > 2
-	end
-	def self.info(message)
-		STDOUT << ":: ".colorize(:blue) << message.colorize(:white) << "\n" if ::Context.verbosity > 1
-	end
-	def self.warning(message)
-		STDERR << "?? ".colorize(:yellow) << message.colorize(:yellow) << "\n" if ::Context.verbosity > 0
-	end
-	def self.error(message)
-		STDERR << "!! ".colorize(:red) << message.colorize(:red) << "\n" if ::Context.verbosity > 0
-	end
-end
-
 
 extend AuthD
 
@@ -436,10 +417,10 @@ class AuthD::Service
 							pattern =~ full_name.as_s
 						end
 					end
-					Log.debug "#{u.login} matches #{pattern}"
+					Baguette::Log.debug "#{u.login} matches #{pattern}"
 					matching_users << u.to_public
 				else
-					Log.error "#{u.login} doesn't match #{pattern}"
+					Baguette::Log.error "#{u.login} doesn't match #{pattern}"
 				end
 			end
 
@@ -541,19 +522,19 @@ class AuthD::Service
 		server.timer      = 30000 # 30 seconds
 		server.loop do |event|
 			if event.is_a? IPC::Exception
-				Log.error "IPC::Exception"
+				Baguette::Log.error "IPC::Exception"
 				pp! event
 				next
 			end
 
 			case event
 			when IPC::Event::Timer
-				Log.debug "Timer"
+				Baguette::Log.debug "Timer"
 			when IPC::Event::MessageReceived
 				begin
 					request = Request.from_ipc(event.message).not_nil!
 
-					Log.info "<< #{request.class.name.sub /^Request::/, ""}"
+					Baguette::Log.info "<< #{request.class.name.sub /^Request::/, ""}"
 
 					response = handle_request request
 
@@ -561,16 +542,16 @@ class AuthD::Service
 
 					server.send event.fd, response
 				rescue e : MalformedRequest
-					Log.error "#{e.message}"
-					Log.error " .. type was:    #{e.ipc_type}"
-					Log.error " .. payload was: #{e.payload}"
+					Baguette::Log.error "#{e.message}"
+					Baguette::Log.error " .. type was:    #{e.ipc_type}"
+					Baguette::Log.error " .. payload was: #{e.payload}"
 					response =  Response::Error.new e.message
 				rescue e
-					Log.error "#{e.message}"
+					Baguette::Log.error "#{e.message}"
 					response = Response::Error.new e.message
 				end
 
-				Log.info ">> #{response.class.name.sub /^Response::/, ""}"
+				Baguette::Log.info ">> #{response.class.name.sub /^Response::/, ""}"
 			end
 		end
 	end
@@ -624,7 +605,7 @@ begin
 		parser.on "-v verbosity",
 			"--verbosity level",
 			"Verbosity level. From 0 to 3. Default: 1" do |v|
-			Context.verbosity = v.to_i
+			Baguette::Context.verbosity = v.to_i
 		end
 
 
@@ -644,9 +625,9 @@ begin
 		authd.read_only_profile_keys = read_only_profile_keys
 	end.run
 rescue e : OptionParser::Exception
-	Log.error e.message
+	Baguette::Log.error e.message
 rescue e
-	Log.error "exception raised: #{e.message}"
+	Baguette::Log.error "exception raised: #{e.message}"
 	e.backtrace.try &.each do |line|
 		STDERR << "  - " << line << '\n'
 	end

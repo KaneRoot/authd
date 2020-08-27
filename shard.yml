@@ -40,6 +40,9 @@ dependencies:
     jwt:
         github: crystal-community/jwt
         branch: master
+    baguette-crystal-base:
+        git: https://git.baguette.netlib.re/Baguette/baguette-crystal-base
+        branch: master
     dodb:
         git: https://git.baguette.netlib.re/Baguette/dodb.cr
         branch: master
