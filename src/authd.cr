@@ -339,6 +339,13 @@ class AuthD::Request
 		initialize :token, :new_profile
 	end
 
+	class EditContacts < Request
+		property token : String
+
+		property email : String?
+		property phone : String?
+	end
+
 	# This creates a Request::Type enumeration. One entry for each request type.
 	{% begin %}
 		enum Type

@@ -508,6 +508,20 @@ class AuthD::Service
 			@users_per_uid.update user.uid.to_s, user
 
 			Response::User.new user.to_public
+		when Request::EditContacts
+			user = get_user_from_token request.token
+
+			return Response::Error.new "invalid user" unless user
+
+			if email = request.email
+				# FIXME: This *should* require checking the new mail, with
+				#        a new activation key and everything else.
+				user.contact.email = email
+			end
+
+			@users_per_uid.update user
+
+			Response::UserEdited.new user.uid
 		else
 			Response::Error.new "unhandled request type"
 		end
