@@ -420,7 +420,7 @@ class AuthD::Service
 					Baguette::Log.debug "#{u.login} matches #{pattern}"
 					matching_users << u.to_public
 				else
-					Baguette::Log.error "#{u.login} doesn't match #{pattern}"
+					Baguette::Log.debug "#{u.login} doesn't match #{pattern}"
 				end
 			end
 
