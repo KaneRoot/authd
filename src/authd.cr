@@ -277,8 +277,7 @@ class AuthD::Request
 	class CheckPermission < Request
 		property shared_key : String
 
-		# FIXME: Make it Int32 | String
-		property user       : Int32
+		property user       : Int32 | String
 		property service    : String
 		property resource   : String
 
@@ -288,8 +287,7 @@ class AuthD::Request
 	class SetPermission < Request
 		property shared_key : String
 
-		# FIXME: Make it Int32 | String
-		property user       : Int32
+		property user       : Int32 | String
 		property service    : String
 		property resource   : String
 		property permission : ::AuthD::User::PermissionLevel
@@ -549,8 +547,8 @@ module AuthD
 			end
 		end
 
-		def check_permission(user : ::AuthD::User::Public, service_name : String, resource_name : String) : User::PermissionLevel
-			request = Request::CheckPermission.new @key, user.uid, service_name, resource_name
+		def check_permission(user : Int32, service_name : String, resource_name : String) : User::PermissionLevel
+			request = Request::CheckPermission.new @key, user, service_name, resource_name
 
 			send request
 

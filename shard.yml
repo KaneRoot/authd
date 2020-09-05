@@ -11,6 +11,8 @@ description: |
 targets:
   authd:
     main: src/main.cr
+  auth-user-perms:
+    main: utils/authd-user-perms.cr
   auth-user-add:
     main: utils/authd-user-add.cr
   auth-user-allow:
