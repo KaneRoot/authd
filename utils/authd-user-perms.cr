@@ -27,9 +27,10 @@ OptionParser.parse do |parser|
 	end
 
 	parser.on "-h", "--help", "Prints this help message." do
-		puts "usage: #{PROGRAM_NAME} <uid> <service> <resource> [permission] [options]"
-		puts "example: #{PROGRAM_NAME} 1002 my-application chat Read"
-		puts "permission list: None Read Edit Admin"
+		puts "usage:   #{PROGRAM_NAME} <uid> <service>      <resource> [permission] [options]"
+		puts "example: #{PROGRAM_NAME} 1002  my-application chat       read"
+		puts
+		puts "permission list: none read edit admin"
 		puts parser
 		exit 0
 	end
