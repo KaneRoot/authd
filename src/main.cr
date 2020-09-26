@@ -403,7 +403,7 @@ class AuthD::Service
 
 			Response::PasswordRecovered.new user.to_public
 		when Request::SearchUser
-			pattern = Regex.new request.user
+			pattern = Regex.new request.user, Regex::Options::IGNORE_CASE
 
 			matching_users = Array(AuthD::User::Public).new
 
