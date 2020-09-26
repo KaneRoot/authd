@@ -53,7 +53,7 @@ login = cli_login.not_nil! # not_nil!? O RLY?
 
 profile = profile_file.try do |file|
 	begin
-		JSON.parse File.read file
+		JSON.parse(File.read file).as_h
 	rescue e
 		STDERR.puts e.message
 		exit 1

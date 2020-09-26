@@ -448,7 +448,7 @@ module AuthD
 		def add_user(login : String, password : String,
 			email : String?,
 			phone : String?,
-			profile : JSON::Any?) : ::AuthD::User::Public | Exception
+			profile : Hash(String, JSON::Any)?) : ::AuthD::User::Public | Exception
 
 			send Request::AddUser.new @key, login, password, email, phone, profile
 
@@ -513,7 +513,7 @@ module AuthD
 			password : String,
 			email : String?,
 			phone : String?,
-			profile : JSON::Any?) : ::AuthD::User::Public?
+			profile : Hash(String, JSON::Any)?) : ::AuthD::User::Public?
 
 			send Request::Register.new login, password, email, phone, profile
 			response = Response.from_ipc read
