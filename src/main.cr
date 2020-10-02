@@ -432,8 +432,10 @@ class AuthD::Service
 
 			new_profile = request.new_profile
 
+			profile = user.profile || Hash(String, JSON::Any).new
+
 			@read_only_profile_keys.each do |key|
-				if new_profile.has_key? key
+				if new_profile[key]? != profile[key]?
 					return Response::Error.new "tried to edit read only key"
 				end
 			end
