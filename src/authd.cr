@@ -345,6 +345,19 @@ class AuthD::Request
 		property phone : String?
 	end
 
+	class Delete < Request
+		# Deletion can be triggered by either an admin or the user.
+		property shared_key : String?
+
+		property login      : String?
+		property password   : String?
+
+		property user       : String | Int32
+
+		initialize :user, :login, :password
+		initialize :user, :shared_key
+	end
+
 	# This creates a Request::Type enumeration. One entry for each request type.
 	{% begin %}
 		enum Type
@@ -484,8 +497,8 @@ module AuthD
 			end
 		end
 
-		def ask_password_recovery(uid_or_login : String | Int32)
-			send Request::AskPasswordRecovery.new uid_or_login
+		def ask_password_recovery(uid_or_login : String | Int32, email : String)
+			send Request::AskPasswordRecovery.new uid_or_login, email
 			response = Response.from_ipc read
 
 			case response
@@ -608,6 +621,23 @@ module AuthD
 			else
 				raise Exception.new "unexpected response"
 			end
+		end
+
+		def delete(user : Int32 | String, key : String)
+			send Request::Delete.new user, key
+			delete_
+		end
+		def delete(user : Int32 | String, login : String, pass : String)
+			send Request::Delete.new user, login, pass
+			delete_
+		end
+		def delete_
+			response = Response.from_ipc read
+			case response
+			when Response::Error
+				raise Exception.new response.reason
+			end
+			response
 		end
 	end
 end
