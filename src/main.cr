@@ -205,6 +205,12 @@ class AuthD::Service
 				return Response::Error.new "email required"
 			end
 
+			mailer_activation_url = @mailer_activation_url
+			if mailer_activation_url.nil?
+				# In this case we should not accept its registration.
+				return Response::Error.new "No activation URL were entered. Cannot send activation mails."
+			end
+
 			if ! request.email.nil?
 				# Test on the email address format.
 				grok = Grok.new [ "%{EMAILADDRESS:email}" ]
@@ -229,23 +235,29 @@ class AuthD::Service
 
 			user.date_registration = Time.local
 
-			unless (mailer_activation_url = @mailer_activation_url).nil?
-
+			begin
 				mailer_field_subject  = @mailer_field_subject.not_nil!
 				mailer_field_from     = @mailer_field_from.not_nil!
 				mailer_activation_url = @mailer_activation_url.not_nil!
 
+				u_login          = user.login
+				u_email          = user.contact.email.not_nil!
+				u_activation_key = user.contact.activation_key.not_nil!
+
 				# Once the user is created and stored, we try to contact him
 				unless Process.run("activation-mailer", [
-					"-l", user.login,
-					"-e", user.contact.email.not_nil!,
+					"-l", u_login,
+					"-e", u_email,
 					"-t", mailer_field_subject,
 					"-f", mailer_field_from,
 					"-u", mailer_activation_url,
-					"-a", user.contact.activation_key.not_nil!
+					"-a", u_activation_key
 					]).success?
-					return Response::Error.new "cannot contact the user (but still registered)"
+					raise "cannot contact user #{user.login} address #{user.contact.email}"
 				end
+			rescue e
+				Baguette::Log.error "activation-mailer: #{e}"
+				return Response::Error.new "cannot contact the user (not registered)"
 			end
 
 			# add the user only if we were able to send the confirmation mail
