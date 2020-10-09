@@ -286,11 +286,41 @@ class AuthD::Service
 
 			Response::UsersList.new @users.to_h.map &.[1].to_public
 		when Request::CheckPermission
-			unless request.shared_key == @jwt_key
+			authorized = false
+
+			if key = request.shared_key
+				if key == @jwt_key
+					authorized = true
+				else
+					return Response::Error.new "invalid key provided"
+				end
+			end
+
+			if token = request.token
+				user = get_user_from_token token
+
+				if user.nil?
+					return Response::Error.new "token does not match user"
+				end
+
+				pp! request.user, user.login, request.user == user.login
+				if user.login != request.user && user.uid != request.user
+					return Response::Error.new "token does not match user"
+				end
+
+				authorized = true
+			end
+
+			unless authorized
 				return Response::Error.new "unauthorized"
 			end
 
-			user = @users_per_uid.get? request.user.to_s
+			user = case u = request.user
+			when .is_a? Int32
+				@users_per_uid.get? u.to_s
+			else
+				@users_per_login.get? u
+			end
 
 			if user.nil?
 				return Response::Error.new "no such user"

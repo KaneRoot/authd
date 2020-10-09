@@ -275,7 +275,8 @@ class AuthD::Request
 	end
 
 	class CheckPermission < Request
-		property shared_key : String
+		property shared_key : String?
+		property token      : String?
 
 		property user       : Int32 | String
 		property service    : String
