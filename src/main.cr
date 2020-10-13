@@ -315,7 +315,6 @@ class AuthD::Service
 					return Response::Error.new "token does not match user"
 				end
 
-				pp! request.user, user.login, request.user == user.login
 				if user.login != request.user && user.uid != request.user
 					return Response::Error.new "token does not match user"
 				end
@@ -616,7 +615,6 @@ class AuthD::Service
 		server.loop do |event|
 			if event.is_a? IPC::Exception
 				Baguette::Log.error "IPC::Exception"
-				pp! event
 				next
 			end
 
