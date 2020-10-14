@@ -635,6 +635,7 @@ class AuthD::Service
 				rescue e : MalformedRequest
 					Baguette::Log.error "#{e.message}"
 					Baguette::Log.error " .. type was:    #{e.ipc_type}"
+					Baguette::Log.error " .. tried class was: #{Request.requests.find(&.type.==(e.ipc_type)).to_s}"
 					Baguette::Log.error " .. payload was: #{e.payload}"
 					response =  Response::Error.new e.message
 				rescue e
