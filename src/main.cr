@@ -62,11 +62,11 @@ class AuthD::Service
 				return Response::Error.new "invalid credentials"
 			end
 
-			if user.password_hash != hash_password request.password
+			if user.nil?
 				return Response::Error.new "invalid credentials"
 			end
 
-			if user.nil?
+			if user.password_hash != hash_password request.password
 				return Response::Error.new "invalid credentials"
 			end
 
@@ -546,6 +546,55 @@ class AuthD::Service
 			@users_per_uid.update user
 
 			Response::UserEdited.new user.uid
+		when Request::Delete
+			uid_or_login = request.user
+			user_to_delete = if uid_or_login.is_a? Int32
+				@users_per_uid.get? uid_or_login.to_s
+			else
+				@users_per_login.get? uid_or_login
+			end
+
+			if user_to_delete.nil?
+				return Response::Error.new "invalid user"
+			end
+
+			# Either the request comes from an admin or the user.
+			# Shared key == admin, check the key.
+			if key = request.shared_key
+				return Response::Error.new "unauthorized (wrong shared key)" unless key == @jwt_key
+			else
+				login = request.login
+				pass = request.password
+				if login.nil? || pass.nil?
+					return Response::Error.new "authentication failed (no shared key, no login)"
+				end
+
+				# authenticate the user
+				begin
+					user = @users_per_login.get login
+				rescue e : DODB::MissingEntry
+					return Response::Error.new "invalid credentials"
+				end
+
+				if user.nil?
+					return Response::Error.new "invalid credentials"
+				end
+
+				if user.password_hash != hash_password pass
+					return Response::Error.new "invalid credentials"
+				end
+
+				# Is the user to delete the requesting user?
+				if user.uid != user_to_delete.uid
+					return Response::Error.new "invalid credentials"
+				end
+			end
+
+			# User or admin is now verified: let's proceed with the user deletion.
+			@users_per_login.delete user_to_delete.login
+
+			# TODO: better response
+			Response::User.new user_to_delete.to_public
 		else
 			Response::Error.new "unhandled request type"
 		end

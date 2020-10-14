@@ -11,22 +11,8 @@ description: |
 targets:
   authd:
     main: src/main.cr
-  auth-user-perms:
-    main: utils/authd-user-perms.cr
-  auth-user-add:
-    main: utils/authd-user-add.cr
-  auth-user-allow:
-    main: utils/authd-user-allow.cr
-  auth-user-ask-for-new-password:
-    main: utils/authd-user-ask-for-new-password.cr
-  auth-user-get:
-    main: utils/authd-user-get.cr
-  auth-user-mod:
-    main: utils/authd-user-mod.cr
-  auth-user-validate:
-    main: utils/authd-user-validate.cr
-  auth-user-search:
-    main: utils/authd-user-search.cr
+  authc:
+    main: utils/authc.cr
 
 crystal: 0.35.1
 
