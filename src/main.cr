@@ -566,6 +566,7 @@ class AuthD::Service
 		server.loop do |event|
 			if event.is_a? IPC::Exception
 				Baguette::Log.error "IPC::Exception"
+				pp! event
 				next
 			end
 
