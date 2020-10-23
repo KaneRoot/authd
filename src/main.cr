@@ -14,18 +14,6 @@ require "./authd.cr"
 
 extend AuthD
 
-# Allows get configuration from a provided file.
-# See Baguette::Configuration::Base.get
-class Baguette::Configuration::Auth < Baguette::Configuration::Base
-	include YAML::Serializable
-
-	property login           : String?
-	property pass            : String?
-	property shared_key      : String?
-	property shared_key_file : String?
-end
-
-
 class AuthD::Service
 	property registrations_allowed = false
 	property require_email         = false

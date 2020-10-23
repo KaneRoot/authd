@@ -1,10 +1,22 @@
 require "json"
-
 require "jwt"
-
 require "ipc"
 
+require "baguette-crystal-base"
 require "./user.cr"
+
+# Allows get configuration from a provided file.
+# See Baguette::Configuration::Base.get
+class Baguette::Configuration
+	class Auth < Base
+		include YAML::Serializable
+
+		property login           : String?
+		property pass            : String?
+		property shared_key      : String?
+		property shared_key_file : String?
+	end
+end
 
 class AuthD::Exception < Exception
 end
