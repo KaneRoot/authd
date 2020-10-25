@@ -16,6 +16,7 @@ extend AuthD
 
 class Baguette::Configuration
 	class Auth < Base
+		property recreate_indexes       : Bool          = false
 		property storage                : String        = "storage"
 		property registrations          : Bool          = false
 		property require_email          : Bool          = false
@@ -48,12 +49,16 @@ class AuthD::Service
 	@users_per_login : DODB::Index(User)
 	@users_per_uid   : DODB::Index(User)
 
-	def initialize(@storage_root : String, @jwt_key : String)
+	def initialize(@storage_root : String, @jwt_key : String, recreate_indexes : Bool)
 		@users = DODB::DataBase(User).new @storage_root
 		@users_per_uid   = @users.new_index "uid",   &.uid.to_s
 		@users_per_login = @users.new_index "login", &.login
 
 		@last_uid_file = "#{@storage_root}/last_used_uid"
+
+		if recreate_indexes
+			@users.reindex_everything!
+		end
 	end
 
 	def hash_password(password : String) : String
@@ -751,7 +756,10 @@ begin
 		exit 0
 	end
 
-	AuthD::Service.new(configuration.storage, configuration.shared_key).tap do |authd|
+	AuthD::Service.new(configuration.storage,
+		configuration.shared_key,
+		configuration.recreate_indexes,
+		).tap do |authd|
 		authd.registrations_allowed              = configuration.registrations
 		authd.require_email                      = configuration.require_email
 		authd.mailer_activation_url              = configuration.activation_url
