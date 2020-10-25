@@ -245,6 +245,11 @@ class AuthD::Service
 				end
 			end
 
+			# In this case we should not accept its registration.
+			if request.password.size < 4
+				return Response::Error.new "password too short"
+			end
+
 			uid = new_uid
 			password = hash_password request.password
 
