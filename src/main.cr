@@ -16,18 +16,23 @@ extend AuthD
 
 class Baguette::Configuration
 	class Auth < Base
-		property storage                : String?
-		property jwt_key                : String?
-		property registrations          : Bool?
-		property require_email          : Bool?
-		property activation_url         : String?
-		property field_subject          : String?
-		property field_from             : String?
-		property read_only_profile_keys : Array(String)?
+		property jwt_key                : String = "nico-nico-nii" # Default authd key, as per the specs. :eyes:
+		property key_file               : String? = nil
 
-		property verbosity              : Int32?
-		property print_ipc_timer        : Bool?
-		property ipc_timer              : Int32?
+		property storage                : String        = "storage"
+		property registrations          : Bool          = false
+		property require_email          : Bool          = false
+		property activation_url         : String?       = nil
+		property field_subject          : String?       = nil
+		property field_from             : String?       = nil
+		property read_only_profile_keys : Array(String) = Array(String).new
+
+		property verbosity              : Int32 = 3
+		property print_ipc_timer        : Bool  = false
+		property ipc_timer              : Int32 = 30_000
+
+		def initialize
+		end
 	end
 end
 
@@ -670,84 +675,56 @@ class AuthD::Service
 	end
 end
 
-print_timer                       = false
-timer                             = 30_000
-authd_storage                     = "storage"
-authd_jwt_key                     = "nico-nico-nii"
-authd_registrations               = false
-authd_require_email               = false
-activation_url          : String? = nil
-field_subject           : String? = nil
-field_from              : String? = nil
-read_only_profile_keys            = Array(String).new
 
 begin
-
 	simulation, no_configuration, configuration_file = Baguette::Configuration.option_parser
 
 	configuration = if no_configuration
 		Baguette::Log.info "do not load a configuration file."
-		nil
+		Baguette::Configuration::Auth.new
 	else
-		Baguette::Configuration::Auth.get
+		Baguette::Configuration::Auth.get || Baguette::Configuration::Auth.new
 	end
 
-	configuration.try do |conf|
-		Baguette::Context.verbosity = conf.verbosity.not_nil! unless conf.verbosity.nil?
+	Baguette::Context.verbosity = configuration.verbosity
 
-		if key_file = conf.shared_key_file
-			authd_jwt_key = File.read(key_file).chomp
-		end
-
-		if ro_profile_keys = conf.read_only_profile_keys
-			read_only_profile_keys = ro_profile_keys
-		end
-
-		print_timer          = conf.print_ipc_timer.not_nil! unless conf.print_ipc_timer.nil?
-		timer                = conf.ipc_timer.not_nil!       unless conf.ipc_timer.nil?
-		authd_jwt_key        = conf.shared_key.not_nil!      unless conf.shared_key.nil?
-		authd_storage        = conf.storage.not_nil!         unless conf.storage.nil?
-		authd_registrations  = conf.registrations.not_nil!   unless conf.registrations.nil?
-		authd_require_email  = conf.require_email.not_nil!   unless conf.require_email.nil?
-		activation_url       = conf.activation_url.not_nil!  unless conf.activation_url.nil?
-		field_subject        = conf.field_subject.not_nil!   unless conf.field_subject.nil?
-		field_from           = conf.field_from.not_nil!      unless conf.field_from.nil?
+	if key_file = configuration.key_file
+		configuration.jwt_key = File.read(key_file).chomp
 	end
-
 
 	OptionParser.parse do |parser|
 		parser.banner = "usage: authd [options]"
 
 		parser.on "--storage directory", "Directory in which to store users." do |directory|
-			authd_storage = directory
+			configuration.storage = directory
 		end
 
 		parser.on "-K file", "--key-file file", "JWT key file" do |file_name|
-			authd_jwt_key = File.read(file_name).chomp
+			configuration.jwt_key = File.read(file_name).chomp
 		end
 
 		parser.on "-R", "--allow-registrations" do
-			authd_registrations = true
+			configuration.registrations = true
 		end
 
 		parser.on "-E", "--require-email" do
-			authd_require_email = true
+			configuration.require_email = true
 		end
 
 		parser.on "-t subject", "--subject title", "Subject of the email." do |s|
-			field_subject = s
+			configuration.field_subject = s
 		end
 
 		parser.on "-f from-email", "--from email", "'From:' field to use in activation email." do |f|
-			field_from = f
+			configuration.field_from = f
 		end
 
 		parser.on "-u", "--activation-url url", "Activation URL." do |opt|
-			activation_url = opt
+			configuration.activation_url = opt
 		end
 
 		parser.on "-x key", "--read-only-profile-key key", "Marks a user profile key as being read-only." do |key|
-			read_only_profile_keys.push key
+			configuration.read_only_profile_keys.push key
 		end
 
 		parser.on "-h", "--help", "Show this help" do
@@ -757,29 +734,19 @@ begin
 	end
 
 	if simulation
-		pp! Baguette::Context.verbosity
-		pp! print_timer
-		pp! timer
-		pp! authd_storage
-		pp! authd_jwt_key
-		pp! authd_registrations
-		pp! authd_require_email
-		pp! activation_url
-		pp! field_subject
-		pp! field_from
-		pp! read_only_profile_keys
+		pp! configuration
 		exit 0
 	end
 
-	AuthD::Service.new(authd_storage, authd_jwt_key).tap do |authd|
-		authd.registrations_allowed  = authd_registrations
-		authd.require_email          = authd_require_email
-		authd.mailer_activation_url  = activation_url
-		authd.mailer_field_subject   = field_subject
-		authd.mailer_field_from      = field_from
-		authd.read_only_profile_keys = read_only_profile_keys
-		authd.print_timer            = print_timer
-		authd.timer                  = timer
+	AuthD::Service.new(configuration.storage, configuration.jwt_key).tap do |authd|
+		authd.registrations_allowed  = configuration.registrations
+		authd.require_email          = configuration.require_email
+		authd.mailer_activation_url  = configuration.activation_url
+		authd.mailer_field_subject   = configuration.field_subject
+		authd.mailer_field_from      = configuration.field_from
+		authd.read_only_profile_keys = configuration.read_only_profile_keys
+		authd.print_timer            = configuration.print_ipc_timer
+		authd.timer                  = configuration.ipc_timer
 	end.run
 rescue e : OptionParser::Exception
 	Baguette::Log.error e.message
