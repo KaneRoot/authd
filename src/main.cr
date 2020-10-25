@@ -14,13 +14,34 @@ require "./authd.cr"
 
 extend AuthD
 
+class Baguette::Configuration
+	class Auth < Base
+		property storage                : String?
+		property jwt_key                : String?
+		property registrations          : Bool?
+		property require_email          : Bool?
+		property activation_url         : String?
+		property field_subject          : String?
+		property field_from             : String?
+		property read_only_profile_keys : Array(String)?
+
+		property verbosity              : Int32?
+		property print_ipc_timer        : Bool?
+		property ipc_timer              : Int32?
+	end
+end
+
 class AuthD::Service
+	property timer                 = 30_000  # 30 seconds
+	property print_timer           = false
+
 	property registrations_allowed = false
 	property require_email         = false
 	property mailer_activation_url : String? = nil
 	property mailer_field_from     : String? = nil
 	property mailer_field_subject  : String? = nil
 	property read_only_profile_keys = Array(String).new
+
 
 	@users_per_login : DODB::Index(User)
 	@users_per_uid   : DODB::Index(User)
@@ -610,8 +631,8 @@ class AuthD::Service
 		##
 		# Provides a JWT-based authentication scheme for service-specific users.
 		server = IPC::Server.new "auth"
-		server.base_timer = 30000 # 30 seconds
-		server.timer      = 30000 # 30 seconds
+		server.base_timer = @timer
+		server.timer      = @timer
 		server.loop do |event|
 			if event.is_a? IPC::Exception
 				Baguette::Log.error "IPC::Exception"
@@ -620,7 +641,7 @@ class AuthD::Service
 
 			case event
 			when IPC::Event::Timer
-				Baguette::Log.debug "Timer"
+				Baguette::Log.debug "Timer" if @print_timer
 			when IPC::Event::MessageReceived
 				begin
 					request = Request.from_ipc(event.message).not_nil!
@@ -649,20 +670,55 @@ class AuthD::Service
 	end
 end
 
-authd_storage = "storage"
-authd_jwt_key = "nico-nico-nii"
-authd_registrations = false
-authd_require_email = false
-activation_url : String? = nil
-field_subject  : String? = nil
-field_from     : String? = nil
-read_only_profile_keys = Array(String).new
+print_timer                       = false
+timer                             = 30_000
+authd_storage                     = "storage"
+authd_jwt_key                     = "nico-nico-nii"
+authd_registrations               = false
+authd_require_email               = false
+activation_url          : String? = nil
+field_subject           : String? = nil
+field_from              : String? = nil
+read_only_profile_keys            = Array(String).new
 
 begin
+
+	simulation, no_configuration, configuration_file = Baguette::Configuration.option_parser
+
+	configuration = if no_configuration
+		Baguette::Log.info "do not load a configuration file."
+		nil
+	else
+		Baguette::Configuration::Auth.get
+	end
+
+	configuration.try do |conf|
+		Baguette::Context.verbosity = conf.verbosity.not_nil! unless conf.verbosity.nil?
+
+		if key_file = conf.shared_key_file
+			authd_jwt_key = File.read(key_file).chomp
+		end
+
+		if ro_profile_keys = conf.read_only_profile_keys
+			read_only_profile_keys = ro_profile_keys
+		end
+
+		print_timer          = conf.print_ipc_timer.not_nil! unless conf.print_ipc_timer.nil?
+		timer                = conf.ipc_timer.not_nil!       unless conf.ipc_timer.nil?
+		authd_jwt_key        = conf.shared_key.not_nil!      unless conf.shared_key.nil?
+		authd_storage        = conf.storage.not_nil!         unless conf.storage.nil?
+		authd_registrations  = conf.registrations.not_nil!   unless conf.registrations.nil?
+		authd_require_email  = conf.require_email.not_nil!   unless conf.require_email.nil?
+		activation_url       = conf.activation_url.not_nil!  unless conf.activation_url.nil?
+		field_subject        = conf.field_subject.not_nil!   unless conf.field_subject.nil?
+		field_from           = conf.field_from.not_nil!      unless conf.field_from.nil?
+	end
+
+
 	OptionParser.parse do |parser|
 		parser.banner = "usage: authd [options]"
 
-		parser.on "-s directory", "--storage directory", "Directory in which to store users." do |directory|
+		parser.on "--storage directory", "Directory in which to store users." do |directory|
 			authd_storage = directory
 		end
 
@@ -694,27 +750,36 @@ begin
 			read_only_profile_keys.push key
 		end
 
-		parser.on "-v verbosity",
-			"--verbosity level",
-			"Verbosity level. From 0 to 3. Default: 1" do |v|
-			Baguette::Context.verbosity = v.to_i
-		end
-
-
 		parser.on "-h", "--help", "Show this help" do
 			puts parser
-
 			exit 0
 		end
 	end
 
+	if simulation
+		pp! Baguette::Context.verbosity
+		pp! print_timer
+		pp! timer
+		pp! authd_storage
+		pp! authd_jwt_key
+		pp! authd_registrations
+		pp! authd_require_email
+		pp! activation_url
+		pp! field_subject
+		pp! field_from
+		pp! read_only_profile_keys
+		exit 0
+	end
+
 	AuthD::Service.new(authd_storage, authd_jwt_key).tap do |authd|
-		authd.registrations_allowed = authd_registrations
-		authd.require_email         = authd_require_email
-		authd.mailer_activation_url = activation_url
-		authd.mailer_field_subject  = field_subject
-		authd.mailer_field_from     = field_from
+		authd.registrations_allowed  = authd_registrations
+		authd.require_email          = authd_require_email
+		authd.mailer_activation_url  = activation_url
+		authd.mailer_field_subject   = field_subject
+		authd.mailer_field_from      = field_from
 		authd.read_only_profile_keys = read_only_profile_keys
+		authd.print_timer            = print_timer
+		authd.timer                  = timer
 	end.run
 rescue e : OptionParser::Exception
 	Baguette::Log.error e.message
