@@ -16,9 +16,6 @@ extend AuthD
 
 class Baguette::Configuration
 	class Auth < Base
-		property jwt_key                : String = "nico-nico-nii" # Default authd key, as per the specs. :eyes:
-		property key_file               : String? = nil
-
 		property storage                : String        = "storage"
 		property registrations          : Bool          = false
 		property require_email          : Bool          = false
@@ -31,9 +28,6 @@ class Baguette::Configuration
 		property verbosity              : Int32 = 3
 		property print_ipc_timer        : Bool  = false
 		property ipc_timer              : Int32 = 30_000
-
-		def initialize
-		end
 	end
 end
 
@@ -702,8 +696,8 @@ begin
 
 	Baguette::Context.verbosity = configuration.verbosity
 
-	if key_file = configuration.key_file
-		configuration.jwt_key = File.read(key_file).chomp
+	if key_file = configuration.shared_key_file
+		configuration.shared_key = File.read(key_file).chomp
 	end
 
 	OptionParser.parse do |parser|
@@ -714,7 +708,7 @@ begin
 		end
 
 		parser.on "-K file", "--key-file file", "JWT key file" do |file_name|
-			configuration.jwt_key = File.read(file_name).chomp
+			configuration.shared_key = File.read(file_name).chomp
 		end
 
 		parser.on "-R", "--allow-registrations" do
@@ -752,7 +746,7 @@ begin
 		exit 0
 	end
 
-	AuthD::Service.new(configuration.storage, configuration.jwt_key).tap do |authd|
+	AuthD::Service.new(configuration.storage, configuration.shared_key).tap do |authd|
 		authd.registrations_allowed              = configuration.registrations
 		authd.require_email                      = configuration.require_email
 		authd.mailer_activation_url              = configuration.activation_url

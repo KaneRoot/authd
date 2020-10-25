@@ -11,10 +11,13 @@ class Baguette::Configuration
 	class Auth < Base
 		include YAML::Serializable
 
-		property login           : String?
-		property pass            : String?
-		property shared_key      : String?
-		property shared_key_file : String?
+		property login           : String? = nil
+		property pass            : String? = nil
+		property shared_key      : String = "nico-nico-nii" # Default authd key, as per the specs. :eyes:
+		property shared_key_file : String? = nil
+
+		def initialize
+		end
 	end
 end
 
