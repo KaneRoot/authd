@@ -27,6 +27,7 @@ class Baguette::Configuration
 		property field_from             : String?       = nil
 		property read_only_profile_keys : Array(String) = Array(String).new
 
+		property print_password_recovery_parameters : Bool = false
 		property verbosity              : Int32 = 3
 		property print_ipc_timer        : Bool  = false
 		property ipc_timer              : Int32 = 30_000
@@ -47,6 +48,8 @@ class AuthD::Service
 	property mailer_field_subject  : String? = nil
 	property read_only_profile_keys = Array(String).new
 
+
+	property print_password_recovery_parameters : Bool = false
 
 	@users_per_login : DODB::Index(User)
 	@users_per_uid   : DODB::Index(User)
@@ -433,6 +436,15 @@ class AuthD::Service
 				mailer_activation_url = @mailer_activation_url.not_nil!
 
 				# Once the user is created and stored, we try to contact him
+
+				if @print_password_recovery_parameters
+					pp! user.login,
+						user.contact.email.not_nil!,
+						mailer_field_from,
+						mailer_activation_url,
+						user.password_renew_key.not_nil!
+				end
+
 				unless Process.run("password-recovery-mailer", [
 					"-l", user.login,
 					"-e", user.contact.email.not_nil!,
@@ -441,6 +453,7 @@ class AuthD::Service
 					"-u", mailer_activation_url,
 					"-a", user.password_renew_key.not_nil!
 					]).success?
+
 					return Response::Error.new "cannot contact the user for password recovery"
 				end
 			end
@@ -683,7 +696,8 @@ begin
 		Baguette::Log.info "do not load a configuration file."
 		Baguette::Configuration::Auth.new
 	else
-		Baguette::Configuration::Auth.get || Baguette::Configuration::Auth.new
+		Baguette::Configuration::Auth.get(configuration_file) ||
+			Baguette::Configuration::Auth.new
 	end
 
 	Baguette::Context.verbosity = configuration.verbosity
@@ -739,14 +753,15 @@ begin
 	end
 
 	AuthD::Service.new(configuration.storage, configuration.jwt_key).tap do |authd|
-		authd.registrations_allowed  = configuration.registrations
-		authd.require_email          = configuration.require_email
-		authd.mailer_activation_url  = configuration.activation_url
-		authd.mailer_field_subject   = configuration.field_subject
-		authd.mailer_field_from      = configuration.field_from
-		authd.read_only_profile_keys = configuration.read_only_profile_keys
-		authd.print_timer            = configuration.print_ipc_timer
-		authd.timer                  = configuration.ipc_timer
+		authd.registrations_allowed              = configuration.registrations
+		authd.require_email                      = configuration.require_email
+		authd.mailer_activation_url              = configuration.activation_url
+		authd.mailer_field_subject               = configuration.field_subject
+		authd.mailer_field_from                  = configuration.field_from
+		authd.read_only_profile_keys             = configuration.read_only_profile_keys
+		authd.print_timer                        = configuration.print_ipc_timer
+		authd.timer                              = configuration.ipc_timer
+		authd.print_password_recovery_parameters = configuration.print_password_recovery_parameters
 	end.run
 rescue e : OptionParser::Exception
 	Baguette::Log.error e.message
