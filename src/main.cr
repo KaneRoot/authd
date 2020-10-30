@@ -638,6 +638,14 @@ class AuthD::Service
 
 			# TODO: better response
 			Response::User.new user_to_delete.to_public
+		when Request::GetContacts
+			user = get_user_from_token request.token
+
+			return Response::Error.new "invalid user" unless user
+
+			_c = user.contact
+
+			Response::Contacts.new user.uid, _c.email, _c.phone
 		else
 			Response::Error.new "unhandled request type"
 		end
@@ -667,7 +675,11 @@ class AuthD::Service
 				Baguette::Log.debug "Timer" if @print_timer
 			when IPC::Event::MessageReceived
 				begin
-					request = Request.from_ipc(event.message).not_nil!
+					request = Request.from_ipc(event.message)
+						
+					if request.nil?
+						raise "Unknown request (#{event.message.utype.to_i})"
+					end
 
 					Baguette::Log.info "<< #{request.class.name.sub /^Request::/, ""}"
 
@@ -681,6 +693,7 @@ class AuthD::Service
 					Baguette::Log.error " .. type was:    #{e.ipc_type}"
 					Baguette::Log.error " .. tried class was: #{Request.requests.find(&.type.==(e.ipc_type)).to_s}"
 					Baguette::Log.error " .. payload was: #{e.payload}"
+					Baguette::Log.error " .. tried class was: #{Request.requests.find(&.type.==(e.ipc_type)).to_s}"
 					response =  Response::Error.new e.message
 				rescue e
 					Baguette::Log.error "#{e.message}"

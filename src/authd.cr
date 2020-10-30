@@ -144,6 +144,14 @@ class AuthD::Response
 		initialize :users
 	end
 
+	class Contacts < Response
+		property user : Int32
+		property email : String?
+		property phone : String?
+
+		initialize user, email, phone
+	end
+
 	# This creates a Request::Type enumeration. One entry for each request type.
 	{% begin %}
 		enum Type
@@ -371,6 +379,10 @@ class AuthD::Request
 
 		initialize :user, :login, :password
 		initialize :user, :shared_key
+	end
+
+	class GetContacts < Request
+		property token : String
 	end
 
 	# This creates a Request::Type enumeration. One entry for each request type.
