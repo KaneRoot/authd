@@ -14,7 +14,28 @@ require "./authd.cr"
 
 extend AuthD
 
+class Baguette::Configuration
+	class Auth < Base
+		property recreate_indexes       : Bool          = false
+		property storage                : String        = "storage"
+		property registrations          : Bool          = false
+		property require_email          : Bool          = false
+		property activation_url         : String?       = nil
+		property field_subject          : String?       = nil
+		property field_from             : String?       = nil
+		property read_only_profile_keys : Array(String) = Array(String).new
+
+		property print_password_recovery_parameters : Bool = false
+		property verbosity              : Int32 = 3
+		property print_ipc_timer        : Bool  = false
+		property ipc_timer              : Int32 = 30_000
+	end
+end
+
 class AuthD::Service
+	property timer                 = 30_000  # 30 seconds
+	property print_timer           = false
+
 	property registrations_allowed = false
 	property require_email         = false
 	property mailer_activation_url : String? = nil
@@ -22,15 +43,22 @@ class AuthD::Service
 	property mailer_field_subject  : String? = nil
 	property read_only_profile_keys = Array(String).new
 
+
+	property print_password_recovery_parameters : Bool = false
+
 	@users_per_login : DODB::Index(User)
 	@users_per_uid   : DODB::Index(User)
 
-	def initialize(@storage_root : String, @jwt_key : String)
+	def initialize(@storage_root : String, @jwt_key : String, recreate_indexes : Bool)
 		@users = DODB::DataBase(User).new @storage_root
 		@users_per_uid   = @users.new_index "uid",   &.uid.to_s
 		@users_per_login = @users.new_index "login", &.login
 
 		@last_uid_file = "#{@storage_root}/last_used_uid"
+
+		if recreate_indexes
+			@users.reindex_everything!
+		end
 	end
 
 	def hash_password(password : String) : String
@@ -222,6 +250,11 @@ class AuthD::Service
 				end
 			end
 
+			# In this case we should not accept its registration.
+			if request.password.size < 4
+				return Response::Error.new "password too short"
+			end
+
 			uid = new_uid
 			password = hash_password request.password
 
@@ -407,6 +440,15 @@ class AuthD::Service
 				mailer_activation_url = @mailer_activation_url.not_nil!
 
 				# Once the user is created and stored, we try to contact him
+
+				if @print_password_recovery_parameters
+					pp! user.login,
+						user.contact.email.not_nil!,
+						mailer_field_from,
+						mailer_activation_url,
+						user.password_renew_key.not_nil!
+				end
+
 				unless Process.run("password-recovery-mailer", [
 					"-l", user.login,
 					"-e", user.contact.email.not_nil!,
@@ -415,6 +457,7 @@ class AuthD::Service
 					"-u", mailer_activation_url,
 					"-a", user.password_renew_key.not_nil!
 					]).success?
+
 					return Response::Error.new "cannot contact the user for password recovery"
 				end
 			end
@@ -610,8 +653,8 @@ class AuthD::Service
 		##
 		# Provides a JWT-based authentication scheme for service-specific users.
 		server = IPC::Server.new "auth"
-		server.base_timer = 30000 # 30 seconds
-		server.timer      = 30000 # 30 seconds
+		server.base_timer = @timer
+		server.timer      = @timer
 		server.loop do |event|
 			if event.is_a? IPC::Exception
 				Baguette::Log.error "IPC::Exception"
@@ -621,7 +664,7 @@ class AuthD::Service
 
 			case event
 			when IPC::Event::Timer
-				Baguette::Log.debug "Timer"
+				Baguette::Log.debug "Timer" if @print_timer
 			when IPC::Event::MessageReceived
 				begin
 					request = Request.from_ipc(event.message).not_nil!
@@ -636,6 +679,7 @@ class AuthD::Service
 				rescue e : MalformedRequest
 					Baguette::Log.error "#{e.message}"
 					Baguette::Log.error " .. type was:    #{e.ipc_type}"
+					Baguette::Log.error " .. tried class was: #{Request.requests.find(&.type.==(e.ipc_type)).to_s}"
 					Baguette::Log.error " .. payload was: #{e.payload}"
 					response =  Response::Error.new e.message
 				rescue e
@@ -649,72 +693,83 @@ class AuthD::Service
 	end
 end
 
-authd_storage = "storage"
-authd_jwt_key = "nico-nico-nii"
-authd_registrations = false
-authd_require_email = false
-activation_url : String? = nil
-field_subject  : String? = nil
-field_from     : String? = nil
-read_only_profile_keys = Array(String).new
 
 begin
+	simulation, no_configuration, configuration_file = Baguette::Configuration.option_parser
+
+	configuration = if no_configuration
+		Baguette::Log.info "do not load a configuration file."
+		Baguette::Configuration::Auth.new
+	else
+		Baguette::Configuration::Auth.get(configuration_file) ||
+			Baguette::Configuration::Auth.new
+	end
+
+	Baguette::Context.verbosity = configuration.verbosity
+
+	if key_file = configuration.shared_key_file
+		configuration.shared_key = File.read(key_file).chomp
+	end
+
 	OptionParser.parse do |parser|
 		parser.banner = "usage: authd [options]"
 
-		parser.on "-s directory", "--storage directory", "Directory in which to store users." do |directory|
-			authd_storage = directory
+		parser.on "--storage directory", "Directory in which to store users." do |directory|
+			configuration.storage = directory
 		end
 
 		parser.on "-K file", "--key-file file", "JWT key file" do |file_name|
-			authd_jwt_key = File.read(file_name).chomp
+			configuration.shared_key = File.read(file_name).chomp
 		end
 
 		parser.on "-R", "--allow-registrations" do
-			authd_registrations = true
+			configuration.registrations = true
 		end
 
 		parser.on "-E", "--require-email" do
-			authd_require_email = true
+			configuration.require_email = true
 		end
 
 		parser.on "-t subject", "--subject title", "Subject of the email." do |s|
-			field_subject = s
+			configuration.field_subject = s
 		end
 
 		parser.on "-f from-email", "--from email", "'From:' field to use in activation email." do |f|
-			field_from = f
+			configuration.field_from = f
 		end
 
 		parser.on "-u", "--activation-url url", "Activation URL." do |opt|
-			activation_url = opt
+			configuration.activation_url = opt
 		end
 
 		parser.on "-x key", "--read-only-profile-key key", "Marks a user profile key as being read-only." do |key|
-			read_only_profile_keys.push key
+			configuration.read_only_profile_keys.push key
 		end
-
-		parser.on "-v verbosity",
-			"--verbosity level",
-			"Verbosity level. From 0 to 3. Default: 1" do |v|
-			Baguette::Context.verbosity = v.to_i
-		end
-
 
 		parser.on "-h", "--help", "Show this help" do
 			puts parser
-
 			exit 0
 		end
 	end
 
-	AuthD::Service.new(authd_storage, authd_jwt_key).tap do |authd|
-		authd.registrations_allowed = authd_registrations
-		authd.require_email         = authd_require_email
-		authd.mailer_activation_url = activation_url
-		authd.mailer_field_subject  = field_subject
-		authd.mailer_field_from     = field_from
-		authd.read_only_profile_keys = read_only_profile_keys
+	if simulation
+		pp! configuration
+		exit 0
+	end
+
+	AuthD::Service.new(configuration.storage,
+		configuration.shared_key,
+		configuration.recreate_indexes,
+		).tap do |authd|
+		authd.registrations_allowed              = configuration.registrations
+		authd.require_email                      = configuration.require_email
+		authd.mailer_activation_url              = configuration.activation_url
+		authd.mailer_field_subject               = configuration.field_subject
+		authd.mailer_field_from                  = configuration.field_from
+		authd.read_only_profile_keys             = configuration.read_only_profile_keys
+		authd.print_timer                        = configuration.print_ipc_timer
+		authd.timer                              = configuration.ipc_timer
+		authd.print_password_recovery_parameters = configuration.print_password_recovery_parameters
 	end.run
 rescue e : OptionParser::Exception
 	Baguette::Log.error e.message

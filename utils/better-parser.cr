@@ -56,6 +56,8 @@ unrecognized_args_to_context_args = -> (parser : OptionParser, n_expected_args :
 	# With the right args, these will be interpreted as serialized data.
 	parser.unknown_args do |args|
 		if args.size != n_expected_args
+			Baguette::Log.error "expected number of arguments: #{n_expected_args}, received: #{args.size}"
+			Baguette::Log.error "args: #{args}"
 			Baguette::Log.error "#{parser}"
 			exit 1
 		end
