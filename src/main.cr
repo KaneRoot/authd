@@ -15,7 +15,7 @@ require "./authd.cr"
 extend AuthD
 
 class Baguette::Configuration
-	class Auth < Base
+	class Auth < IPC
 		property recreate_indexes       : Bool          = false
 		property storage                : String        = "storage"
 		property registrations          : Bool          = false
@@ -26,37 +26,23 @@ class Baguette::Configuration
 		property read_only_profile_keys : Array(String) = Array(String).new
 
 		property print_password_recovery_parameters : Bool = false
-		property verbosity              : Int32 = 3
-		property print_ipc_timer        : Bool  = false
-		property ipc_timer              : Int32 = 30_000
 	end
 end
 
 class AuthD::Service
-	property timer                 = 30_000  # 30 seconds
-	property print_timer           = false
-
-	property registrations_allowed = false
-	property require_email         = false
-	property mailer_activation_url : String? = nil
-	property mailer_field_from     : String? = nil
-	property mailer_field_subject  : String? = nil
-	property read_only_profile_keys = Array(String).new
-
-
-	property print_password_recovery_parameters : Bool = false
+	property configuration         : Baguette::Configuration::Auth
 
 	@users_per_login : DODB::Index(User)
 	@users_per_uid   : DODB::Index(User)
 
-	def initialize(@storage_root : String, @jwt_key : String, recreate_indexes : Bool)
-		@users = DODB::DataBase(User).new @storage_root
+	def initialize(@configuration)
+		@users = DODB::DataBase(User).new @configuration.storage
 		@users_per_uid   = @users.new_index "uid",   &.uid.to_s
 		@users_per_login = @users.new_index "login", &.login
 
-		@last_uid_file = "#{@storage_root}/last_used_uid"
+		@last_uid_file = "#{@configuration.storage}/last_used_uid"
 
-		if recreate_indexes
+		if @configuration.recreate_indexes
 			@users.reindex_everything!
 		end
 	end
@@ -104,11 +90,11 @@ class AuthD::Service
 			# change the date of the last connection
 			@users_per_uid.update user.uid.to_s, user
 
-			Response::Token.new (token.to_s @jwt_key), user.uid
+			Response::Token.new (token.to_s @configuration.shared_key), user.uid
 		when Request::AddUser
 			# No verification of the users' informations when an admin adds it.
 			# No mail address verification.
-			if request.shared_key != @jwt_key
+			if request.shared_key != @configuration.shared_key
 				return Response::Error.new "invalid authentication key"
 			end
 
@@ -116,7 +102,7 @@ class AuthD::Service
 				return Response::Error.new "login already used"
 			end
 
-			if @require_email && request.email.nil?
+			if @configuration.require_email && request.email.nil?
 				return Response::Error.new "email required"
 			end
 
@@ -190,7 +176,7 @@ class AuthD::Service
 
 			Response::User.new user.to_public
 		when Request::ModUser
-			if request.shared_key != @jwt_key
+			if request.shared_key != @configuration.shared_key
 				return Response::Error.new "invalid authentication key"
 			end
 
@@ -221,7 +207,7 @@ class AuthD::Service
 
 			Response::UserEdited.new user.uid
 		when Request::Register
-			if ! @registrations_allowed
+			if ! @configuration.registrations
 				return Response::Error.new "registrations not allowed"
 			end
 
@@ -229,12 +215,12 @@ class AuthD::Service
 				return Response::Error.new "login already used"
 			end
 
-			if @require_email && request.email.nil?
+			if @configuration.require_email && request.email.nil?
 				return Response::Error.new "email required"
 			end
 
-			mailer_activation_url = @mailer_activation_url
-			if mailer_activation_url.nil?
+			activation_url = @configuration.activation_url
+			if activation_url.nil?
 				# In this case we should not accept its registration.
 				return Response::Error.new "No activation URL were entered. Cannot send activation mails."
 			end
@@ -269,9 +255,9 @@ class AuthD::Service
 			user.date_registration = Time.local
 
 			begin
-				mailer_field_subject  = @mailer_field_subject.not_nil!
-				mailer_field_from     = @mailer_field_from.not_nil!
-				mailer_activation_url = @mailer_activation_url.not_nil!
+				field_subject  = @configuration.field_subject.not_nil!
+				field_from     = @configuration.field_from.not_nil!
+				activation_url = @configuration.activation_url.not_nil!
 
 				u_login          = user.login
 				u_email          = user.contact.email.not_nil!
@@ -281,9 +267,9 @@ class AuthD::Service
 				unless Process.run("activation-mailer", [
 					"-l", u_login,
 					"-e", u_email,
-					"-t", mailer_field_subject,
-					"-f", mailer_field_from,
-					"-u", mailer_activation_url,
+					"-t", field_subject,
+					"-f", field_from,
+					"-u", activation_url,
 					"-a", u_activation_key
 					]).success?
 					raise "cannot contact user #{user.login} address #{user.contact.email}"
@@ -324,7 +310,7 @@ class AuthD::Service
 			end
 
 			request.key.try do |key|
-				return Response::Error.new "unauthorized (wrong shared key)" unless key == @jwt_key
+				return Response::Error.new "unauthorized (wrong shared key)" unless key == @configuration.shared_key
 			end
 
 			return Response::Error.new "unauthorized (no key nor token)" unless request.key || request.token
@@ -334,7 +320,7 @@ class AuthD::Service
 			authorized = false
 
 			if key = request.shared_key
-				if key == @jwt_key
+				if key == @configuration.shared_key
 					authorized = true
 				else
 					return Response::Error.new "invalid key provided"
@@ -385,7 +371,7 @@ class AuthD::Service
 
 			return Response::PermissionCheck.new service, request.resource, user.uid, resource_permissions
 		when Request::SetPermission
-			unless request.shared_key == @jwt_key
+			unless request.shared_key == @configuration.shared_key
 				return Response::Error.new "unauthorized"
 			end
 
@@ -434,18 +420,18 @@ class AuthD::Service
 
 			@users_per_uid.update user.uid.to_s, user
 
-			unless (mailer_activation_url = @mailer_activation_url).nil?
+			unless (activation_url = @configuration.activation_url).nil?
 
-				mailer_field_from     = @mailer_field_from.not_nil!
-				mailer_activation_url = @mailer_activation_url.not_nil!
+				field_from     = @configuration.field_from.not_nil!
+				activation_url = @configuration.activation_url.not_nil!
 
 				# Once the user is created and stored, we try to contact him
 
-				if @print_password_recovery_parameters
+				if @configuration.print_password_recovery_parameters
 					pp! user.login,
 						user.contact.email.not_nil!,
-						mailer_field_from,
-						mailer_activation_url,
+						field_from,
+						activation_url,
 						user.password_renew_key.not_nil!
 				end
 
@@ -453,8 +439,8 @@ class AuthD::Service
 					"-l", user.login,
 					"-e", user.contact.email.not_nil!,
 					"-t", "Password recovery email",
-					"-f", mailer_field_from,
-					"-u", mailer_activation_url,
+					"-f", field_from,
+					"-u", activation_url,
 					"-a", user.password_renew_key.not_nil!
 					]).success?
 
@@ -518,7 +504,7 @@ class AuthD::Service
 
 			profile = user.profile || Hash(String, JSON::Any).new
 
-			@read_only_profile_keys.each do |key|
+			@configuration.read_only_profile_keys.each do |key|
 				if new_profile[key]? != profile[key]?
 					return Response::Error.new "tried to edit read only key"
 				end
@@ -537,7 +523,7 @@ class AuthD::Service
 
 				user
 			elsif shared_key = request.shared_key
-				return Response::Error.new "invalid shared key" if shared_key != @jwt_key
+				return Response::Error.new "invalid shared key" if shared_key != @configuration.shared_key
 
 				user = request.user
 
@@ -559,7 +545,7 @@ class AuthD::Service
 			new_profile = user.profile || Hash(String, JSON::Any).new
 
 			unless request.shared_key
-				@read_only_profile_keys.each do |key|
+				@configuration.read_only_profile_keys.each do |key|
 					if request.new_profile.has_key? key
 						return Response::Error.new "tried to edit read only key"
 					end
@@ -604,7 +590,7 @@ class AuthD::Service
 			# Either the request comes from an admin or the user.
 			# Shared key == admin, check the key.
 			if key = request.shared_key
-				return Response::Error.new "unauthorized (wrong shared key)" unless key == @jwt_key
+				return Response::Error.new "unauthorized (wrong shared key)" unless key == @configuration.shared_key
 			else
 				login = request.login
 				pass = request.password
@@ -652,7 +638,7 @@ class AuthD::Service
 	end
 
 	def get_user_from_token(token : String)
-		token_payload = Token.from_s(@jwt_key, token)
+		token_payload = Token.from_s(@configuration.shared_key, token)
 
 		@users_per_uid.get? token_payload.uid.to_s
 	end
@@ -661,8 +647,8 @@ class AuthD::Service
 		##
 		# Provides a JWT-based authentication scheme for service-specific users.
 		server = IPC::Server.new "auth"
-		server.base_timer = @timer
-		server.timer      = @timer
+		server.base_timer = @configuration.ipc_timer
+		server.timer      = @configuration.ipc_timer
 		server.loop do |event|
 			if event.is_a? IPC::Exception
 				Baguette::Log.error "IPC::Exception"
@@ -672,7 +658,7 @@ class AuthD::Service
 
 			case event
 			when IPC::Event::Timer
-				Baguette::Log.debug "Timer" if @print_timer
+				Baguette::Log.debug "Timer" if @configuration.print_ipc_timer
 			when IPC::Event::MessageReceived
 				begin
 					request = Request.from_ipc(event.message)
@@ -770,20 +756,8 @@ begin
 		exit 0
 	end
 
-	AuthD::Service.new(configuration.storage,
-		configuration.shared_key,
-		configuration.recreate_indexes,
-		).tap do |authd|
-		authd.registrations_allowed              = configuration.registrations
-		authd.require_email                      = configuration.require_email
-		authd.mailer_activation_url              = configuration.activation_url
-		authd.mailer_field_subject               = configuration.field_subject
-		authd.mailer_field_from                  = configuration.field_from
-		authd.read_only_profile_keys             = configuration.read_only_profile_keys
-		authd.print_timer                        = configuration.print_ipc_timer
-		authd.timer                              = configuration.ipc_timer
-		authd.print_password_recovery_parameters = configuration.print_password_recovery_parameters
-	end.run
+	AuthD::Service.new(configuration).run
+
 rescue e : OptionParser::Exception
 	Baguette::Log.error e.message
 rescue e

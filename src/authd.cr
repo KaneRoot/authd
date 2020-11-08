@@ -8,7 +8,7 @@ require "./user.cr"
 # Allows get configuration from a provided file.
 # See Baguette::Configuration::Base.get
 class Baguette::Configuration
-	class Auth < Base
+	class Auth < IPC
 		include YAML::Serializable
 
 		property login           : String? = nil
