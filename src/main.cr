@@ -29,11 +29,17 @@ class Baguette::Configuration
 	end
 end
 
-class AuthD::Service
-	property configuration         : Baguette::Configuration::Auth
+# Provides a JWT-based authentication scheme for service-specific users.
+class AuthD::Service < IPC::Server
+	property configuration   : Baguette::Configuration::Auth
 
-	@users_per_login : DODB::Index(User)
-	@users_per_uid   : DODB::Index(User)
+	# DB and its indexes.
+	property users           : DODB::DataBase(User)
+	property users_per_uid   : DODB::Index(User)
+	property users_per_login : DODB::Index(User)
+
+	# #{@configuration.storage}/last_used_uid
+	property last_uid_file   : String
 
 	def initialize(@configuration)
 		@users = DODB::DataBase(User).new @configuration.storage
@@ -45,6 +51,8 @@ class AuthD::Service
 		if @configuration.recreate_indexes
 			@users.reindex_everything!
 		end
+
+		super "auth"
 	end
 
 	def hash_password(password : String) : String
@@ -67,573 +75,48 @@ class AuthD::Service
 		uid
 	end
 
-	def handle_request(request : AuthD::Request?)
-		case request
-		when Request::GetToken
-			begin
-				user = @users_per_login.get request.login
-			rescue e : DODB::MissingEntry
-				return Response::Error.new "invalid credentials"
-			end
-
-			if user.nil?
-				return Response::Error.new "invalid credentials"
-			end
-
-			if user.password_hash != hash_password request.password
-				return Response::Error.new "invalid credentials"
-			end
-
-			user.date_last_connection = Time.local
-			token = user.to_token
-
-			# change the date of the last connection
-			@users_per_uid.update user.uid.to_s, user
-
-			Response::Token.new (token.to_s @configuration.shared_key), user.uid
-		when Request::AddUser
-			# No verification of the users' informations when an admin adds it.
-			# No mail address verification.
-			if request.shared_key != @configuration.shared_key
-				return Response::Error.new "invalid authentication key"
-			end
-
-			if @users_per_login.get? request.login
-				return Response::Error.new "login already used"
-			end
-
-			if @configuration.require_email && request.email.nil?
-				return Response::Error.new "email required"
-			end
-
-			password_hash = hash_password request.password
-
-			uid = new_uid
-
-			user = User.new uid, request.login, password_hash
-			user.contact.email = request.email unless request.email.nil?
-			user.contact.phone = request.phone unless request.phone.nil?
-
-			request.profile.try do |profile|
-				user.profile = profile
-			end
-
-			# We consider adding the user as a registration
-			user.date_registration = Time.local
-
-			@users << user
-
-			Response::UserAdded.new user.to_public
-		when Request::ValidateUser
-			user = @users_per_login.get? request.login
-
-			if user.nil?
-				return Response::Error.new "user not found"
-			end
-
-			if user.contact.activation_key.nil?
-				return Response::Error.new "user already validated"
-			end
-
-			# remove the user contact activation key: the email is validated
-			if user.contact.activation_key == request.activation_key
-				user.contact.activation_key = nil
-			else
-				return Response::Error.new "wrong activation key"
-			end
-
-			@users_per_uid.update user.uid.to_s, user
-
-			Response::UserValidated.new user.to_public
-		when Request::GetUserByCredentials
-			user = @users_per_login.get? request.login
-
-			unless user
-				return Response::Error.new "invalid credentials"
-			end
-			
-			if hash_password(request.password) != user.password_hash
-				return Response::Error.new "invalid credentials"
-			end
-
-			user.date_last_connection = Time.local
-
-			# change the date of the last connection
-			@users_per_uid.update user.uid.to_s, user
-
-			Response::User.new user.to_public
-		when Request::GetUser
-			uid_or_login = request.user
-			user = if uid_or_login.is_a? Int32
-				@users_per_uid.get? uid_or_login.to_s
-			else
-				@users_per_login.get? uid_or_login
-			end
-
-			if user.nil?
-				return Response::Error.new "user not found"
-			end
-
-			Response::User.new user.to_public
-		when Request::ModUser
-			if request.shared_key != @configuration.shared_key
-				return Response::Error.new "invalid authentication key"
-			end
-
-			uid_or_login = request.user
-			user = if uid_or_login.is_a? Int32
-				@users_per_uid.get? uid_or_login.to_s
-			else
-				@users_per_login.get? uid_or_login
-			end
-
-			unless user
-				return Response::Error.new "user not found"
-			end
-
-			request.password.try do |s|
-				user.password_hash = hash_password s
-			end
-
-			request.email.try do |email|
-				user.contact.email = email
-			end
-
-			request.phone.try do |phone|
-				user.contact.phone = phone
-			end
-
-			@users_per_uid.update user.uid.to_s, user
-
-			Response::UserEdited.new user.uid
-		when Request::Register
-			if ! @configuration.registrations
-				return Response::Error.new "registrations not allowed"
-			end
-
-			if @users_per_login.get? request.login
-				return Response::Error.new "login already used"
-			end
-
-			if @configuration.require_email && request.email.nil?
-				return Response::Error.new "email required"
-			end
-
-			activation_url = @configuration.activation_url
-			if activation_url.nil?
-				# In this case we should not accept its registration.
-				return Response::Error.new "No activation URL were entered. Cannot send activation mails."
-			end
-
-			if ! request.email.nil?
-				# Test on the email address format.
-				grok = Grok.new [ "%{EMAILADDRESS:email}" ]
-				result = grok.parse request.email.not_nil!
-				email = result["email"]?
-
-				if email.nil?
-					return Response::Error.new "invalid email format"
-				end
-			end
-
-			# In this case we should not accept its registration.
-			if request.password.size < 4
-				return Response::Error.new "password too short"
-			end
-
-			uid = new_uid
-			password = hash_password request.password
-
-			user = User.new uid, request.login, password
-			user.contact.email = request.email unless request.email.nil?
-			user.contact.phone = request.phone unless request.phone.nil?
-
-			request.profile.try do |profile|
-				user.profile = profile
-			end
-
-			user.date_registration = Time.local
-
-			begin
-				field_subject  = @configuration.field_subject.not_nil!
-				field_from     = @configuration.field_from.not_nil!
-				activation_url = @configuration.activation_url.not_nil!
-
-				u_login          = user.login
-				u_email          = user.contact.email.not_nil!
-				u_activation_key = user.contact.activation_key.not_nil!
-
-				# Once the user is created and stored, we try to contact him
-				unless Process.run("activation-mailer", [
-					"-l", u_login,
-					"-e", u_email,
-					"-t", field_subject,
-					"-f", field_from,
-					"-u", activation_url,
-					"-a", u_activation_key
-					]).success?
-					raise "cannot contact user #{user.login} address #{user.contact.email}"
-				end
-			rescue e
-				Baguette::Log.error "activation-mailer: #{e}"
-				return Response::Error.new "cannot contact the user (not registered)"
-			end
-
-			# add the user only if we were able to send the confirmation mail
-			@users << user
-
-			Response::UserAdded.new user.to_public
-		when Request::UpdatePassword
-			user = @users_per_login.get? request.login
-
-			unless user
-				return Response::Error.new "invalid credentials"
-			end
-
-			if hash_password(request.old_password) != user.password_hash
-				return Response::Error.new "invalid credentials"
-			end
-
-			user.password_hash = hash_password request.new_password
-
-			@users_per_uid.update user.uid.to_s, user
-
-			Response::UserEdited.new user.uid
-		when Request::ListUsers
-			# FIXME: Lines too long, repeatedly (>80c with 4c tabs).
-			request.token.try do |token|
-				user = get_user_from_token token
-
-				return Response::Error.new "unauthorized (user not found from token)"
-
-				return Response::Error.new "unauthorized (user not in authd group)" unless user.permissions["authd"]?.try(&.["*"].>=(User::PermissionLevel::Read))
-			end
-
-			request.key.try do |key|
-				return Response::Error.new "unauthorized (wrong shared key)" unless key == @configuration.shared_key
-			end
-
-			return Response::Error.new "unauthorized (no key nor token)" unless request.key || request.token
-
-			Response::UsersList.new @users.to_h.map &.[1].to_public
-		when Request::CheckPermission
-			authorized = false
-
-			if key = request.shared_key
-				if key == @configuration.shared_key
-					authorized = true
-				else
-					return Response::Error.new "invalid key provided"
-				end
-			end
-
-			if token = request.token
-				user = get_user_from_token token
-
-				if user.nil?
-					return Response::Error.new "token does not match user"
-				end
-
-				if user.login != request.user && user.uid != request.user
-					return Response::Error.new "token does not match user"
-				end
-
-				authorized = true
-			end
-
-			unless authorized
-				return Response::Error.new "unauthorized"
-			end
-
-			user = case u = request.user
-			when .is_a? Int32
-				@users_per_uid.get? u.to_s
-			else
-				@users_per_login.get? u
-			end
-
-			if user.nil?
-				return Response::Error.new "no such user"
-			end
-
-			service = request.service
-			service_permissions = user.permissions[service]?
-
-			if service_permissions.nil?
-				return Response::PermissionCheck.new service, request.resource, user.uid, User::PermissionLevel::None
-			end
-
-			resource_permissions = service_permissions[request.resource]?
-
-			if resource_permissions.nil?
-				return Response::PermissionCheck.new service, request.resource, user.uid, User::PermissionLevel::None
-			end
-
-			return Response::PermissionCheck.new service, request.resource, user.uid, resource_permissions
-		when Request::SetPermission
-			unless request.shared_key == @configuration.shared_key
-				return Response::Error.new "unauthorized"
-			end
-
-			user = @users_per_uid.get? request.user.to_s
-
-			if user.nil?
-				return Response::Error.new "no such user"
-			end
-
-			service = request.service
-			service_permissions = user.permissions[service]?
-
-			if service_permissions.nil?
-				service_permissions = Hash(String, User::PermissionLevel).new
-				user.permissions[service] = service_permissions
-			end
-
-			if request.permission.none?
-				service_permissions.delete request.resource
-			else
-				service_permissions[request.resource] = request.permission
-			end
-
-			@users_per_uid.update user.uid.to_s, user
-
-			Response::PermissionSet.new user.uid, service, request.resource, request.permission
-		when Request::AskPasswordRecovery
-
-			uid_or_login = request.user
-			user = if uid_or_login.is_a? Int32
-				@users_per_uid.get? uid_or_login.to_s
-			else
-				@users_per_login.get? uid_or_login
-			end
-
-			if user.nil?
-				return Response::Error.new "no such user"
-			end
-
-			if user.contact.email != request.email
-				# Same error as when users are not found.
-				return Response::Error.new "no such user"
-			end
-
-			user.password_renew_key = UUID.random.to_s
-
-			@users_per_uid.update user.uid.to_s, user
-
-			unless (activation_url = @configuration.activation_url).nil?
-
-				field_from     = @configuration.field_from.not_nil!
-				activation_url = @configuration.activation_url.not_nil!
-
-				# Once the user is created and stored, we try to contact him
-
-				if @configuration.print_password_recovery_parameters
-					pp! user.login,
-						user.contact.email.not_nil!,
-						field_from,
-						activation_url,
-						user.password_renew_key.not_nil!
-				end
-
-				unless Process.run("password-recovery-mailer", [
-					"-l", user.login,
-					"-e", user.contact.email.not_nil!,
-					"-t", "Password recovery email",
-					"-f", field_from,
-					"-u", activation_url,
-					"-a", user.password_renew_key.not_nil!
-					]).success?
-
-					return Response::Error.new "cannot contact the user for password recovery"
-				end
-			end
-
-			Response::PasswordRecoverySent.new user.to_public
-		when Request::PasswordRecovery
-			uid_or_login = request.user
-			user = if uid_or_login.is_a? Int32
-				@users_per_uid.get? uid_or_login.to_s
-			else
-				@users_per_login.get? uid_or_login
-			end
-
-			if user.nil?
-				return Response::Error.new "user not found"
-			end
-
-			if user.password_renew_key == request.password_renew_key
-				user.password_hash = hash_password request.new_password
-			else
-				return Response::Error.new "renew key not valid"
-			end
-
-			user.password_renew_key = nil
-
-			@users_per_uid.update user.uid.to_s, user
-
-			Response::PasswordRecovered.new user.to_public
-		when Request::SearchUser
-			pattern = Regex.new request.user, Regex::Options::IGNORE_CASE
-
-			matching_users = Array(AuthD::User::Public).new
-
-			users = @users.to_a
-			users.each do |u|
-				if pattern =~ u.login || u.profile.try do |profile|
-						full_name = profile["full_name"]?
-						if full_name.nil?
-							false
-						else
-							pattern =~ full_name.as_s
-						end
-					end
-					Baguette::Log.debug "#{u.login} matches #{pattern}"
-					matching_users << u.to_public
-				else
-					Baguette::Log.debug "#{u.login} doesn't match #{pattern}"
-				end
-			end
-
-			Response::MatchingUsers.new matching_users
-		when Request::EditProfile
-			user = get_user_from_token request.token
-
-			return Response::Error.new "invalid user" unless user
-
-			new_profile = request.new_profile
-
-			profile = user.profile || Hash(String, JSON::Any).new
-
-			@configuration.read_only_profile_keys.each do |key|
-				if new_profile[key]? != profile[key]?
-					return Response::Error.new "tried to edit read only key"
-				end
-			end
-
-			user.profile = new_profile
-
-			@users_per_uid.update user.uid.to_s, user
-
-			Response::User.new user.to_public
-		when Request::EditProfileContent
-			user = if token = request.token
-				user = get_user_from_token token
-
-				return Response::Error.new "invalid user" unless user
-
-				user
-			elsif shared_key = request.shared_key
-				return Response::Error.new "invalid shared key" if shared_key != @configuration.shared_key
-
-				user = request.user
-
-				return Response::Error.new "invalid user" unless user
-
-				user = if user.is_a? Int32
-					@users_per_uid.get? user.to_s
-				else
-					@users_per_login.get? user
-				end
-
-				return Response::Error.new "invalid user" unless user
-
-				user
-			else
-				return Response::Error.new "no token or shared_key/user pair"
-			end
-
-			new_profile = user.profile || Hash(String, JSON::Any).new
-
-			unless request.shared_key
-				@configuration.read_only_profile_keys.each do |key|
-					if request.new_profile.has_key? key
-						return Response::Error.new "tried to edit read only key"
-					end
-				end
-			end
-
-			request.new_profile.each do |key, value|
-				new_profile[key] = value
-			end
-
-			user.profile = new_profile
-
-			@users_per_uid.update user.uid.to_s, user
-
-			Response::User.new user.to_public
-		when Request::EditContacts
-			user = get_user_from_token request.token
-
-			return Response::Error.new "invalid user" unless user
-
-			if email = request.email
-				# FIXME: This *should* require checking the new mail, with
-				#        a new activation key and everything else.
-				user.contact.email = email
-			end
-
-			@users_per_uid.update user
-
-			Response::UserEdited.new user.uid
-		when Request::Delete
-			uid_or_login = request.user
-			user_to_delete = if uid_or_login.is_a? Int32
-				@users_per_uid.get? uid_or_login.to_s
-			else
-				@users_per_login.get? uid_or_login
-			end
-
-			if user_to_delete.nil?
-				return Response::Error.new "invalid user"
-			end
-
-			# Either the request comes from an admin or the user.
-			# Shared key == admin, check the key.
-			if key = request.shared_key
-				return Response::Error.new "unauthorized (wrong shared key)" unless key == @configuration.shared_key
-			else
-				login = request.login
-				pass = request.password
-				if login.nil? || pass.nil?
-					return Response::Error.new "authentication failed (no shared key, no login)"
-				end
-
-				# authenticate the user
-				begin
-					user = @users_per_login.get login
-				rescue e : DODB::MissingEntry
-					return Response::Error.new "invalid credentials"
-				end
-
-				if user.nil?
-					return Response::Error.new "invalid credentials"
-				end
-
-				if user.password_hash != hash_password pass
-					return Response::Error.new "invalid credentials"
-				end
-
-				# Is the user to delete the requesting user?
-				if user.uid != user_to_delete.uid
-					return Response::Error.new "invalid credentials"
-				end
-			end
-
-			# User or admin is now verified: let's proceed with the user deletion.
-			@users_per_login.delete user_to_delete.login
-
-			# TODO: better response
-			Response::User.new user_to_delete.to_public
-		when Request::GetContacts
-			user = get_user_from_token request.token
-
-			return Response::Error.new "invalid user" unless user
-
-			_c = user.contact
-
-			Response::Contacts.new user.uid, _c.email, _c.phone
+	def handle_request(event : IPC::Event::MessageReceived)
+		request_start = Time.utc
+
+		request = AuthD.requests.parse_ipc_json event.message
+
+		if request.nil?
+			raise "unknown request type"
+		end
+
+		request_name = request.class.name.sub /^AuthD::Request::/, ""
+		Baguette::Log.debug "<< #{request_name}"
+
+		response = begin
+			request.handle self, event
+		rescue e : UserNotFound
+			Baguette::Log.error "#{request_name} user not found"
+			AuthD::Response::Error.new "authorization error"
+		rescue e : AuthenticationInfoLacking
+			Baguette::Log.error "#{request_name} lacking authentication info"
+			AuthD::Response::Error.new "authorization error"
+		rescue e : AdminAuthorizationException
+			Baguette::Log.error "#{request_name} admin authentication failed"
+			AuthD::Response::Error.new "authorization error"
+		rescue e
+			Baguette::Log.error "#{request_name} generic error #{e}"
+			AuthD::Response::Error.new "unknown error"
+		end
+
+		# If clients sent requests with an “id” field, it is copied
+		# in the responses. Allows identifying responses easily.
+		response.id = request.id
+
+		send event.fd, response
+
+		duration = Time.utc - request_start
+
+		response_name = response.class.name.sub /^AuthD::Response::/, ""
+
+		if response.is_a? AuthD::Response::Error
+			Baguette::Log.warning ">> #{response_name} (#{response.reason})"
 		else
-			Response::Error.new "unhandled request type"
+			Baguette::Log.debug ">> #{response_name} (Total duration: #{duration})"
 		end
 	end
 
@@ -644,51 +127,36 @@ class AuthD::Service
 	end
 
 	def run
-		##
-		# Provides a JWT-based authentication scheme for service-specific users.
-		server = IPC::Server.new "auth"
-		server.base_timer = @configuration.ipc_timer
-		server.timer      = @configuration.ipc_timer
-		server.loop do |event|
-			if event.is_a? IPC::Exception
-				Baguette::Log.error "IPC::Exception"
-				pp! event
-				next
-			end
+		Baguette::Log.title "Starting authd"
 
+		@base_timer = @configuration.ipc_timer
+		@timer      = @configuration.ipc_timer
+
+		self.loop do |event|
 			case event
 			when IPC::Event::Timer
 				Baguette::Log.debug "Timer" if @configuration.print_ipc_timer
+
 			when IPC::Event::MessageReceived
+				Baguette::Log.debug "Received message from #{event.fd}" if @configuration.print_ipc_message_received
 				begin
-					request = Request.from_ipc(event.message)
-						
-					if request.nil?
-						raise "Unknown request (#{event.message.utype.to_i})"
-					end
-
-					Baguette::Log.info "<< #{request.class.name.sub /^Request::/, ""}"
-
-					response = handle_request request
-
-					response.id = request.id
-
-					server.send event.fd, response
-				rescue e : MalformedRequest
-					Baguette::Log.error "#{e.message}"
-					Baguette::Log.error " .. type was:    #{e.ipc_type}"
-					Baguette::Log.error " .. tried class was: #{Request.requests.find(&.type.==(e.ipc_type)).to_s}"
-					Baguette::Log.error " .. payload was: #{e.payload}"
-					Baguette::Log.error " .. tried class was: #{Request.requests.find(&.type.==(e.ipc_type)).to_s}"
-					response =  Response::Error.new e.message
+					handle_request event
 				rescue e
 					Baguette::Log.error "#{e.message}"
-					response = Response::Error.new e.message
+					# send event.fd, Response::Error.new e.message
 				end
 
-				Baguette::Log.info ">> #{response.class.name.sub /^Response::/, ""}"
+			when IPC::Event::MessageSent
+				Baguette::Log.debug "Message sent to #{event.fd}" if @configuration.print_ipc_message_sent
+
+			when IPC::Exception
+				Baguette::Log.error "IPC::Exception"
+				pp! event
+			else
+				Baguette::Log.error "Not implemented behavior for event: #{event}"
 			end
 		end
+
 	end
 end
 
