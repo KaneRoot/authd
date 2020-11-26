@@ -152,6 +152,10 @@ class AuthD::Service < IPC::Server
 			when IPC::Exception
 				Baguette::Log.error "IPC::Exception"
 				pp! event
+			when IPC::Event::Connection
+				Baguette::Log.debug "Connection from #{event.fd}" if @configuration.print_ipc_connection
+			when IPC::Event::Disconnection
+				Baguette::Log.debug "Disconnection from #{event.fd}" if @configuration.print_ipc_disconnection
 			else
 				Baguette::Log.error "Not implemented behavior for event: #{event}"
 			end
