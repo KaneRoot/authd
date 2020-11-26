@@ -1,3 +1,4 @@
+require "ipc/json"
 
 module AuthD
 	class Client < IPC::Client
@@ -10,9 +11,9 @@ module AuthD
 		end
 
 		def get_token?(login : String, password : String) : String?
-			send Request::GetToken.new login, password
+			send_now Request::GetToken.new login, password
 
-			response = Response.from_ipc read
+			response = AuthD.responses.parse_ipc_json read
 
 			if response.is_a?(Response::Token)
 				response.token
@@ -22,9 +23,9 @@ module AuthD
 		end
 
 		def get_user?(login : String, password : String) : AuthD::User::Public?
-			send Request::GetUserByCredentials.new login, password
+			send_now Request::GetUserByCredentials.new login, password
 
-			response = Response.from_ipc read
+			response = AuthD.responses.parse_ipc_json read
 
 			if response.is_a? Response::User
 				response.user
@@ -34,9 +35,9 @@ module AuthD
 		end
 
 		def get_user?(uid_or_login : Int32 | String) : ::AuthD::User::Public?
-			send Request::GetUser.new uid_or_login
+			send_now Request::GetUser.new uid_or_login
 
-			response = Response.from_ipc read
+			response = AuthD.responses.parse_ipc_json read
 
 			if response.is_a? Response::User
 				response.user
@@ -45,7 +46,7 @@ module AuthD
 			end
 		end
 
-		def send(type : Request::Type, payload)
+		def send_now(type : Request::Type, payload)
 			send_now @server_fd, type.value.to_u8, payload
 		end
 
@@ -63,9 +64,9 @@ module AuthD
 			phone : String?,
 			profile : Hash(String, JSON::Any)?) : ::AuthD::User::Public | Exception
 
-			send Request::AddUser.new @key, login, password, email, phone, profile
+			send_now Request::AddUser.new @key, login, password, email, phone, profile
 
-			response = Response.from_ipc read
+			response = AuthD.responses.parse_ipc_json read
 
 			case response
 			when Response::UserAdded
@@ -80,9 +81,9 @@ module AuthD
 		end
 
 		def validate_user(login : String, activation_key : String) : ::AuthD::User::Public | Exception
-			send Request::ValidateUser.new login, activation_key
+			send_now Request::ValidateUser.new login, activation_key
 
-			response = Response.from_ipc read
+			response = AuthD.responses.parse_ipc_json read
 
 			case response
 			when Response::UserValidated
@@ -97,8 +98,8 @@ module AuthD
 		end
 
 		def ask_password_recovery(uid_or_login : String | Int32, email : String)
-			send Request::AskPasswordRecovery.new uid_or_login, email
-			response = Response.from_ipc read
+			send_now Request::AskPasswordRecovery.new uid_or_login, email
+			response = AuthD.responses.parse_ipc_json read
 
 			case response
 			when Response::PasswordRecoverySent
@@ -110,8 +111,8 @@ module AuthD
 		end
 
 		def change_password(uid_or_login : String | Int32, new_pass : String, renew_key : String)
-			send Request::PasswordRecovery.new uid_or_login, renew_key, new_pass
-			response = Response.from_ipc read
+			send_now Request::PasswordRecovery.new uid_or_login, renew_key, new_pass
+			response = AuthD.responses.parse_ipc_json read
 
 			case response
 			when Response::PasswordRecovered
@@ -128,8 +129,8 @@ module AuthD
 			phone : String?,
 			profile : Hash(String, JSON::Any)?) : ::AuthD::User::Public?
 
-			send Request::Register.new login, password, email, phone, profile
-			response = Response.from_ipc read
+			send_now Request::Register.new login, password, email, phone, profile
+			response = AuthD.responses.parse_ipc_json read
 
 			case response
 			when Response::UserAdded
@@ -146,9 +147,9 @@ module AuthD
 			request.phone    = phone    if phone
 			request.avatar   = avatar   if avatar
 
-			send request
+			send_now request
 
-			response = Response.from_ipc read
+			response = AuthD.responses.parse_ipc_json read
 
 			case response
 			when Response::UserEdited
@@ -163,9 +164,9 @@ module AuthD
 		def check_permission(user : Int32, service_name : String, resource_name : String) : User::PermissionLevel
 			request = Request::CheckPermission.new @key, user, service_name, resource_name
 
-			send request
+			send_now request
 
-			response = Response.from_ipc read
+			response = AuthD.responses.parse_ipc_json read
 
 			case response
 			when Response::PermissionCheck
@@ -180,9 +181,9 @@ module AuthD
 		def set_permission(uid : Int32, service : String, resource : String, permission : User::PermissionLevel)
 			request = Request::SetPermission.new @key, uid, service, resource, permission
 
-			send request
+			send_now request
 
-			response = Response.from_ipc read
+			response = AuthD.responses.parse_ipc_json read
 
 			case response
 			when Response::PermissionSet
@@ -195,8 +196,8 @@ module AuthD
 		end
 
 		def search_user(user_login : String)
-			send Request::SearchUser.new user_login
-			response = Response.from_ipc read
+			send_now Request::SearchUser.new user_login
+			response = AuthD.responses.parse_ipc_json read
 
 			case response
 			when Response::MatchingUsers
@@ -209,8 +210,8 @@ module AuthD
 		end
 
 		def edit_profile_content(user : Int32 | String, new_values)
-			send Request::EditProfileContent.new key, user, new_values
-			response = Response.from_ipc read
+			send_now Request::EditProfileContent.new key, user, new_values
+			response = AuthD.responses.parse_ipc_json read
 
 			case response
 			when Response::User
@@ -223,15 +224,15 @@ module AuthD
 		end
 
 		def delete(user : Int32 | String, key : String)
-			send Request::Delete.new user, key
+			send_now Request::Delete.new user, key
 			delete_
 		end
 		def delete(user : Int32 | String, login : String, pass : String)
-			send Request::Delete.new user, login, pass
+			send_now Request::Delete.new user, login, pass
 			delete_
 		end
 		def delete_
-			response = Response.from_ipc read
+			response = AuthD.responses.parse_ipc_json read
 			case response
 			when Response::Error
 				raise Exception.new response.reason
