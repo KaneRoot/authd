@@ -21,6 +21,9 @@ class Baguette::Configuration
 	end
 end
 
+class AuthD::Service < IPC::Server
+end
+
 # Requests and responses.
 require "./exceptions"
 
