@@ -4,10 +4,12 @@ class AuthD::Response
 		def initialize(@user)
 		end
 	end
+	AuthD.responses << PasswordRecoverySent
 
 	IPC::JSON.message PasswordRecovered, 10 do
 		property user   : ::AuthD::User::Public
 		def initialize(@user)
 		end
 	end
+	AuthD.responses << PasswordRecovered
 end

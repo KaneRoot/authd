@@ -6,4 +6,5 @@ class AuthD::Response
 		def initialize(@user, @email, @phone)
 		end
 	end
+	AuthD.responses << Contacts
 end

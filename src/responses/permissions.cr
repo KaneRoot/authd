@@ -7,6 +7,7 @@ class AuthD::Response
 		def initialize(@service, @resource, @user, @permission)
 		end
 	end
+	AuthD.responses << PermissionCheck
 
 	IPC::JSON.message PermissionSet, 8 do
 		property user       : Int32
@@ -16,4 +17,5 @@ class AuthD::Response
 		def initialize(@user, @service, @resource, @permission)
 		end
 	end
+	AuthD.responses << PermissionSet
 end

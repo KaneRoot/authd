@@ -5,4 +5,5 @@ class AuthD::Response
 		def initialize(@token, @uid)
 		end
 	end
+	AuthD.responses << Token
 end

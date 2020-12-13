@@ -4,4 +4,5 @@ class AuthD::Response
 		def initialize(@reason)
 		end
 	end
+	AuthD.responses << Error
 end
