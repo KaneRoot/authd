@@ -58,7 +58,7 @@ class AuthD::Service < IPC::Server
 	def hash_password(password : String) : String
 		digest = OpenSSL::Digest.new "sha256"
 		digest << password
-		digest.hexdigest
+		digest.hexfinal
 	end
 
 	def new_uid
