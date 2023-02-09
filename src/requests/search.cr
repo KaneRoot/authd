@@ -5,7 +5,7 @@ class AuthD::Request
 		def initialize(@user)
 		end
 
-		def handle(authd : AuthD::Service, event : IPC::Event::Events)
+		def handle(authd : AuthD::Service)
 			pattern = Regex.new @user, Regex::Options::IGNORE_CASE
 
 			matching_users = Array(AuthD::User::Public).new

@@ -5,12 +5,7 @@ require "yaml"
 
 require "baguette-crystal-base"
 
-require "../src/authd.cr"
-
-# require "./altideal-client.cr"
-# require "./yaml_uuid.cr"  # YAML UUID parser
-# require "./authd_api.cr"  # Authd interface functions
-
+require "../src/libauth.cr"
 
 class Context
 	class_property simulation    = false  # do not perform the action
@@ -35,7 +30,6 @@ class Context
 	class_property args               : Array(String)? = nil
 end
 
-# require "./parse-me"
 require "./better-parser"
 
 class Actions
@@ -106,7 +100,7 @@ class Actions
 
 		res = authd.register login, password.not_nil!, email, phone, profile: profile
 		puts res
-	rescue e : AuthD::Exception
+	rescue e
 		puts "error: #{e.message}"
 	end
 
@@ -229,4 +223,3 @@ end
 #   tool [options] command [options-for-command]
 
 main
-

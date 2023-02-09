@@ -1,8 +1,5 @@
 require "json"
-
 require "uuid"
-
-require "./token.cr"
 
 class AuthD::User
 	include JSON::Serializable

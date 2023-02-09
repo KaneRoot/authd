@@ -8,7 +8,7 @@ class AuthD::Request
 		def initialize(@token)
 		end
 
-		def handle(authd : AuthD::Service, event : IPC::Event::Events)
+		def handle(authd : AuthD::Service)
 			user = authd.get_user_from_token @token
 
 			return Response::Error.new "invalid user" unless user
@@ -32,7 +32,7 @@ class AuthD::Request
 		def initialize(@token)
 		end
 
-		def handle(authd : AuthD::Service, event : IPC::Event::Events)
+		def handle(authd : AuthD::Service)
 			user = authd.get_user_from_token @token
 
 			return Response::Error.new "invalid user" unless user

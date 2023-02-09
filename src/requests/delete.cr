@@ -13,7 +13,7 @@ class AuthD::Request
 		def initialize(@user, @shared_key)
 		end
 
-		def handle(authd : AuthD::Service, event : IPC::Event::Events)
+		def handle(authd : AuthD::Service)
 			uid_or_login = @user
 			user_to_delete = if uid_or_login.is_a? Int32
 				authd.users_per_uid.get? uid_or_login.to_s

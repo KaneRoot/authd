@@ -1,13 +1,25 @@
 require "ipc/json"
+require "json"
 
 module AuthD
-	class Client < IPC::Client
+	class Client < IPC
 		property key : String
+		property server_fd : Int32 = -1
 
 		def initialize
+			super
 			@key = ""
+			fd = self.connect "auth"
+			if fd.nil?
+				raise "couldn't connect to 'auth' IPC service"
+			end
+			@server_fd = fd
+		end
 
-			initialize "auth"
+		def read
+			slice = self.read @server_fd
+			m = IPCMessage::TypedMessage.deserialize slice
+			m.not_nil!
 		end
 
 		def get_token?(login : String, password : String) : String?
@@ -46,8 +58,14 @@ module AuthD
 			end
 		end
 
+		def send_now(msg : IPC::JSON)
+			m = IPCMessage::TypedMessage.new msg.type.to_u8, msg.to_json
+			write @server_fd, m
+		end
+
 		def send_now(type : Request::Type, payload)
-			send_now @server_fd, type.value.to_u8, payload
+			m = IPCMessage::TypedMessage.new type.value.to_u8, payload
+			write @server_fd, m
 		end
 
 		def decode_token(token)
@@ -62,7 +80,7 @@ module AuthD
 		def add_user(login : String, password : String,
 			email : String?,
 			phone : String?,
-			profile : Hash(String, JSON::Any)?) : ::AuthD::User::Public | Exception
+			profile : Hash(String, ::JSON::Any)?) : ::AuthD::User::Public | Exception
 
 			send_now Request::AddUser.new @key, login, password, email, phone, profile
 
@@ -127,7 +145,7 @@ module AuthD
 			password : String,
 			email : String?,
 			phone : String?,
-			profile : Hash(String, JSON::Any)?) : ::AuthD::User::Public?
+			profile : Hash(String, ::JSON::Any)?) : ::AuthD::User::Public?
 
 			send_now Request::Register.new login, password, email, phone, profile
 			response = AuthD.responses.parse_ipc_json read

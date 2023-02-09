@@ -6,7 +6,7 @@ class AuthD::Request
 		def initialize(@login, @password)
 		end
 
-		def handle(authd : AuthD::Service, event : IPC::Event::Events)
+		def handle(authd : AuthD::Service)
 			begin
 				user = authd.users_per_login.get @login
 			rescue e : DODB::MissingEntry

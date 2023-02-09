@@ -9,7 +9,7 @@ class AuthD::Request
 		def initialize(@login, @password, @email, @phone, @profile)
 		end
 
-		def handle(authd : AuthD::Service, event : IPC::Event::Events)
+		def handle(authd : AuthD::Service)
 			if ! authd.configuration.registrations
 				return Response::Error.new "registrations not allowed"
 			end
@@ -20,12 +20,6 @@ class AuthD::Request
 
 			if authd.configuration.require_email && @email.nil?
 				return Response::Error.new "email required"
-			end
-
-			activation_url = authd.configuration.activation_url
-			if activation_url.nil?
-				# In this case we should not accept its registration.
-				return Response::Error.new "No activation URL were entered. Cannot send activation mails."
 			end
 
 			if ! @email.nil?
@@ -58,33 +52,31 @@ class AuthD::Request
 			user.date_registration = Time.local
 
 			begin
-				field_subject  = authd.configuration.field_subject.not_nil!
-				field_from     = authd.configuration.field_from.not_nil!
-				activation_url = authd.configuration.activation_url.not_nil!
+				mailer_exe       = authd.configuration.mailer_exe
+				template_name    = authd.configuration.activation_template
 
 				u_login          = user.login
 				u_email          = user.contact.email.not_nil!
 				u_activation_key = user.contact.activation_key.not_nil!
 
-				# Once the user is created and stored, we try to contact him
-				unless Process.run("activation-mailer", [
-					"-l", u_login,
-					"-e", u_email,
-					"-t", field_subject,
-					"-f", field_from,
-					"-u", activation_url,
-					"-a", u_activation_key
-					]).success?
-					raise "cannot contact user #{user.login} address #{user.contact.email}"
+				# Once the user is created and stored, we try to contact him.
+				unless Process.run(mailer_exe,
+						# PARAMETERS
+						[ "send", template_name, u_email ],
+						# ENV
+						{ "LOGIN" => u_login, "TOKEN" => u_activation_key },
+						true # clear environment
+					).success?
+					raise "cannot contact user #{u_login} address #{u_email}"
 				end
 			rescue e
-				Baguette::Log.error "activation-mailer: #{e}"
+				Baguette::Log.error "mailer: #{e}"
 				return Response::Error.new "cannot contact the user (not registered)"
 			end
 
 			# add the user only if we were able to send the confirmation mail
 			authd.users << user
-
+			authd.new_uid_commit uid
 			Response::UserAdded.new user.to_public
 		end
 	end

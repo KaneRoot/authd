@@ -13,7 +13,7 @@ class AuthD::Request
 		def initialize(@shared_key, @login, @password, @email, @phone, @profile)
 		end
 
-		def handle(authd : AuthD::Service, event : IPC::Event::Events)
+		def handle(authd : AuthD::Service)
 			# No verification of the users' informations when an admin adds it.
 			# No mail address verification.
 			if @shared_key != authd.configuration.shared_key
@@ -44,7 +44,7 @@ class AuthD::Request
 			user.date_registration = Time.local
 
 			authd.users << user
-
+			authd.new_uid_commit uid
 			Response::UserAdded.new user.to_public
 		end
 	end
@@ -63,7 +63,7 @@ class AuthD::Request
 		def initialize(@shared_key, @user)
 		end
 
-		def handle(authd : AuthD::Service, event : IPC::Event::Events)
+		def handle(authd : AuthD::Service)
 			if @shared_key != authd.configuration.shared_key
 				return Response::Error.new "invalid authentication key"
 			end

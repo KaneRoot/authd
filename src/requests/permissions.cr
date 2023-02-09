@@ -10,7 +10,7 @@ class AuthD::Request
 		def initialize(@shared_key, @user, @service, @resource)
 		end
 
-		def handle(authd : AuthD::Service, event : IPC::Event::Events)
+		def handle(authd : AuthD::Service)
 			authorized = false
 
 			if key = @shared_key
@@ -79,7 +79,7 @@ class AuthD::Request
 		def initialize(@shared_key, @user, @service, @resource, @permission)
 		end
 
-		def handle(authd : AuthD::Service, event : IPC::Event::Events)
+		def handle(authd : AuthD::Service)
 			unless @shared_key == authd.configuration.shared_key
 				return Response::Error.new "unauthorized"
 			end

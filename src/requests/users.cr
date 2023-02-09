@@ -6,7 +6,7 @@ class AuthD::Request
 		def initialize(@login, @activation_key)
 		end
 
-		def handle(authd : AuthD::Service, event : IPC::Event::Events)
+		def handle(authd : AuthD::Service)
 			user = authd.users_per_login.get? @login
 
 			if user.nil?
@@ -37,7 +37,7 @@ class AuthD::Request
 		def initialize(@user)
 		end
 
-		def handle(authd : AuthD::Service, event : IPC::Event::Events)
+		def handle(authd : AuthD::Service)
 			uid_or_login = @user
 			user = if uid_or_login.is_a? Int32
 				authd.users_per_uid.get? uid_or_login.to_s
@@ -61,7 +61,7 @@ class AuthD::Request
 		def initialize(@login, @password)
 		end
 
-		def handle(authd : AuthD::Service, event : IPC::Event::Events)
+		def handle(authd : AuthD::Service)
 			user = authd.users_per_login.get? @login
 
 			unless user

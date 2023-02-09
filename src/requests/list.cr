@@ -6,7 +6,7 @@ class AuthD::Request
 		def initialize(@token, @key)
 		end
 
-		def handle(authd : AuthD::Service, event : IPC::Event::Events)
+		def handle(authd : AuthD::Service)
 			# FIXME: Lines too long, repeatedly (>80c with 4c tabs).
 			@token.try do |token|
 				user = authd.get_user_from_token token

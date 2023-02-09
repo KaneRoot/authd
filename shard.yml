@@ -1,12 +1,11 @@
 name: authd
-version: 0.2.0
-
-authors:
-  - Karchnu <karchnu@karchnu.fr>
-  - Luka Vandervelden <lukc@upyum.com>
+version: 0.1.0
 
 description: |
-    JWT-based authentication daemon.
+  JWT-based authentication daemon.
+
+authors:
+  - Philippe Pittoli <karchnu@karchnu.fr>
 
 targets:
   authd:
@@ -14,25 +13,28 @@ targets:
   authc:
     main: utils/authc.cr
 
-crystal: 0.35.1
+crystal: 1.7.1
 
 dependencies:
-    grok:
-        github: spinscale/grok.cr
-    passwd:
-        git: https://git.baguette.netlib.re/Baguette/passwd.cr
-        branch: master
-    ipc:
-        git: https://git.baguette.netlib.re/Baguette/ipc.cr
-        branch: master
-    jwt:
-        github: crystal-community/jwt
-        branch: master
-    baguette-crystal-base:
-        git: https://git.baguette.netlib.re/Baguette/baguette-crystal-base
-        branch: master
-    dodb:
-        git: https://git.baguette.netlib.re/Baguette/dodb.cr
-        branch: master
+  grok:
+    github: spinscale/grok.cr
+  passwd:
+    git: https://git.baguette.netlib.re/Baguette/passwd.cr
+    branch: master
+  jwt:
+    github: crystal-community/jwt
+    branch: master
+  baguette-crystal-base:
+    git: https://git.baguette.netlib.re/Baguette/baguette-crystal-base
+    branch: master
+  dodb:
+    git: https://git.baguette.netlib.re/Baguette/dodb.cr
+    branch: master
+  cbor:
+    git: https://git.baguette.netlib.re/Baguette/crystal-cbor
+    branch: master
+  ipc:
+    git: https://git.baguette.netlib.re/Baguette/ipc.cr
+    branch: master
 
-license: EUPL
+license: ISC

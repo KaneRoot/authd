@@ -7,7 +7,7 @@ class AuthD::Request
 		def initialize(@login, @old_password, @new_password)
 		end
 
-		def handle(authd : AuthD::Service, event : IPC::Event::Events)
+		def handle(authd : AuthD::Service)
 			user = authd.users_per_login.get? @login
 
 			unless user
@@ -35,7 +35,7 @@ class AuthD::Request
 		def initialize(@user, @password_renew_key, @new_password)
 		end
 
-		def handle(authd : AuthD::Service, event : IPC::Event::Events)
+		def handle(authd : AuthD::Service)
 			uid_or_login = @user
 			user = if uid_or_login.is_a? Int32
 				authd.users_per_uid.get? uid_or_login.to_s
@@ -69,7 +69,7 @@ class AuthD::Request
 		def initialize(@user, @email)
 		end
 
-		def handle(authd : AuthD::Service, event : IPC::Event::Events)
+		def handle(authd : AuthD::Service)
 			uid_or_login = @user
 			user = if uid_or_login.is_a? Int32
 				authd.users_per_uid.get? uid_or_login.to_s
@@ -90,32 +90,29 @@ class AuthD::Request
 
 			authd.users_per_uid.update user.uid.to_s, user
 
-			unless (activation_url = authd.configuration.activation_url).nil?
+			# Once the user is created and stored, we try to contact him
+			if authd.configuration.print_password_recovery_parameters
+				pp! user.login,
+					user.contact.email.not_nil!,
+					user.password_renew_key.not_nil!
+			end
 
-				field_from     = authd.configuration.field_from.not_nil!
-				activation_url = authd.configuration.activation_url.not_nil!
+			mailer_exe = authd.configuration.mailer_exe
+			template_name = authd.configuration.recovery_template
 
-				# Once the user is created and stored, we try to contact him
+			u_login = user.login
+			u_email = user.contact.email.not_nil!
+			u_token = user.password_renew_key.not_nil!
 
-				if authd.configuration.print_password_recovery_parameters
-					pp! user.login,
-						user.contact.email.not_nil!,
-						field_from,
-						activation_url,
-						user.password_renew_key.not_nil!
-				end
-
-				unless Process.run("password-recovery-mailer", [
-					"-l", user.login,
-					"-e", user.contact.email.not_nil!,
-					"-t", "Password recovery email",
-					"-f", field_from,
-					"-u", activation_url,
-					"-a", user.password_renew_key.not_nil!
-					]).success?
-
-					return Response::Error.new "cannot contact the user for password recovery"
-				end
+			# Once the user is created and stored, we try to contact him.
+			unless Process.run(mailer_exe,
+					# PARAMETERS
+					[ "send", template_name, u_email ],
+					# ENV
+					{ "LOGIN" => u_login, "TOKEN" => u_token },
+					true # clear environment
+				).success?
+				raise "cannot contact user #{u_login} address #{u_email}"
 			end
 
 			Response::PasswordRecoverySent.new user.to_public

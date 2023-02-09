@@ -6,7 +6,7 @@ class AuthD::Request
 		def initialize(@token, @new_profile)
 		end
 
-		def handle(authd : AuthD::Service, event : IPC::Event::Events)
+		def handle(authd : AuthD::Service)
 			user = authd.get_user_from_token @token
 
 			return Response::Error.new "invalid user" unless user
@@ -45,7 +45,7 @@ class AuthD::Request
 		def initialize(@token, @new_profile)
 		end
 
-		def handle(authd : AuthD::Service, event : IPC::Event::Events)
+		def handle(authd : AuthD::Service)
 			user = if token = @token
 				u = authd.get_user_from_token token
 				raise UserNotFound.new unless u
