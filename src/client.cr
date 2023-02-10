@@ -1,11 +1,6 @@
 require "option_parser"
-
-require "ipc"
 require "yaml"
-
-require "baguette-crystal-base"
-
-require "../src/libauth.cr"
+require "./authd.cr"
 
 class Context
 	class_property simulation    = false  # do not perform the action

@@ -9,9 +9,9 @@ authors:
 
 targets:
   authd:
-    main: src/main.cr
+    main: src/server.cr
   authc:
-    main: utils/authc.cr
+    main: src/client.cr
 
 crystal: 1.7.1
 
