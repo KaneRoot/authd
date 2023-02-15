@@ -189,7 +189,7 @@ begin
 			configuration.storage = directory
 		end
 
-		parser.on "-K file", "--key-file file", "JWT key file" do |file_name|
+		parser.on "-k file", "--key-file file", "JWT key file" do |file_name|
 			configuration.shared_key = File.read(file_name).chomp
 		end
 

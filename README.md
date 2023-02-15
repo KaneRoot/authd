@@ -32,7 +32,7 @@ $ authd --help
 usage: authd [options]
     -s directory, --storage directory
                                      Directory in which to store users.
-    -K file, --key-file file         JWT key file
+    -k file, --key-file file         JWT key file
     -R                               --allow-registrations
     -h, --help                       Show this help
 $
@@ -66,7 +66,7 @@ Example:
 
 ```
 $ echo "I am a key." > key-file
-$ authd -K ./key-file
+$ authd -k ./key-file
 ```
 
 ## APIs
